@@ -1,0 +1,1658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blizzard - Sales Forecaster</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #3a4552 0%, #2a3542 100%);
+            color: #e8eaed;
+            min-height: 100vh;
+        }
+        .header {
+            background: rgba(0,0,0,0.25);
+            padding: 2rem 2rem;
+            min-height: 120px;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            position: relative;
+            overflow: hidden;
+        }
+        .header-bg {
+            position: absolute;
+            left: 0;
+            top: 0;
+            height: 100%;
+            width: auto;
+            -webkit-mask-image: linear-gradient(to right, black 0%, black 25%, transparent 52%);
+            mask-image: linear-gradient(to right, black 0%, black 25%, transparent 52%);
+            opacity: 0.9;
+        }
+        .header h1 {
+            font-size: 1.5rem;
+            margin-left: 70px;
+            background: linear-gradient(90deg, #8fb3d4, #c4a35a);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .header .subtitle { color: #9aa8b8; font-size: 0.9rem; }
+        .backtest-badge {
+            background: #5a7a9a;
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: 1rem;
+            font-size: 0.75rem;
+        }
+        .header-controls {
+            margin-left: auto;
+            font-size: 0.85rem;
+            color: #9aa8b8;
+            z-index: 1;
+            display: flex;
+            gap: 1rem;
+        }
+        .header-controls input {
+            margin-right: 0.25rem;
+        }
+        .year-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+            font-size: 0.9rem;
+        }
+        .year-table th, .year-table td {
+            padding: 0.5rem 1rem;
+            text-align: right;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .year-table th {
+            color: #9aa8b8;
+            font-weight: normal;
+            text-align: right;
+        }
+        .year-table th:first-child, .year-table td:first-child {
+            text-align: left;
+        }
+        .year-table tr:hover {
+            background: rgba(255,255,255,0.05);
+        }
+        .year-table .year-row {
+            cursor: pointer;
+        }
+        .year-table .year-row td:first-child::before {
+            content: '▶ ';
+            font-size: 0.7em;
+            margin-right: 0.3rem;
+            transition: transform 0.2s;
+            display: inline-block;
+        }
+        .year-table .year-row.expanded td:first-child::before {
+            transform: rotate(90deg);
+        }
+        .year-table .month-row {
+            display: none;
+            font-size: 0.85em;
+            color: #9aa8b8;
+        }
+        .year-table .month-row.show {
+            display: table-row;
+        }
+        .year-table .month-row td:first-child {
+            padding-left: 2rem;
+        }
+        .year-table .forecast-row {
+            color: #c4a35a;
+        }
+        .year-table .actual-row {
+            color: #7eb89a;
+        }
+        .container { padding: 1.5rem 2rem; }
+        .tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+        }
+        .tab {
+            padding: 0.5rem 1rem;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 0.5rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .tab:hover { background: rgba(255,255,255,0.1); }
+        .tab.active {
+            background: linear-gradient(135deg, #5a7a9a, #8fb3d4);
+            border-color: transparent;
+        }
+        .chart-container {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 1rem;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .chart-title {
+            font-size: 1.1rem;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .selector-row {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+        .selector {
+            flex: 1;
+            min-width: 200px;
+        }
+        .selector label {
+            display: block;
+            font-size: 0.8rem;
+            color: #888;
+            margin-bottom: 0.25rem;
+        }
+        .selector select, .selector input {
+            width: 100%;
+            padding: 0.5rem;
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 0.5rem;
+            color: #eee;
+            font-size: 0.9rem;
+        }
+        .autocomplete-wrapper {
+            position: relative;
+        }
+        .autocomplete-list {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            max-height: 300px;
+            overflow-y: auto;
+            background: rgba(30,35,40,0.98);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 0.5rem;
+            z-index: 100;
+            display: none;
+        }
+        .autocomplete-list.show { display: block; }
+        .autocomplete-item {
+            padding: 0.5rem 0.75rem;
+            cursor: pointer;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .autocomplete-item:hover, .autocomplete-item.active {
+            background: rgba(255,255,255,0.1);
+        }
+        .autocomplete-item .code {
+            color: #888;
+            font-size: 0.8rem;
+        }
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        .metric-card {
+            background: rgba(255,255,255,0.05);
+            padding: 1rem;
+            border-radius: 0.5rem;
+            text-align: center;
+        }
+        .metric-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            background: linear-gradient(90deg, #8fb3d4, #c4a35a);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .metric-label { font-size: 0.75rem; color: #9aa8b8; margin-top: 0.25rem; }
+        .legend {
+            display: flex;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+            margin-top: 1rem;
+            font-size: 0.85rem;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .legend-color {
+            width: 20px;
+            height: 3px;
+            border-radius: 2px;
+        }
+        .legend-color.historical { background: #8fb3d4; }
+        .legend-color.forecast { background: #c4a35a; }
+        .legend-color.actual { background: #7eb89a; }
+        .legend-color.confidence { background: rgba(196, 163, 90, 0.25); height: 12px; }
+        svg { overflow: visible; }
+        .axis path, .axis line { stroke: rgba(255,255,255,0.2); }
+        .axis text { fill: #888; font-size: 11px; }
+        .grid line { stroke: rgba(255,255,255,0.05); }
+        .tooltip {
+            position: absolute;
+            background: rgba(0,0,0,0.9);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 0.5rem;
+            padding: 0.75rem;
+            font-size: 0.8rem;
+            pointer-events: none;
+            z-index: 100;
+        }
+        .month-row.clickable {
+            cursor: pointer;
+        }
+        .month-row.clickable:hover {
+            background: rgba(255,255,255,0.1);
+        }
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.7);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal {
+            background: #2a3542;
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 1rem;
+            padding: 1.5rem;
+            max-width: 800px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .modal-title {
+            font-size: 1.2rem;
+        }
+        .modal-close {
+            background: none;
+            border: none;
+            color: #888;
+            font-size: 1.5rem;
+            cursor: pointer;
+        }
+        .modal-close:hover { color: #fff; }
+        .variance-summary {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+        .variance-box {
+            background: rgba(255,255,255,0.05);
+            padding: 0.75rem 1rem;
+            border-radius: 0.5rem;
+            text-align: center;
+        }
+        .variance-value {
+            font-size: 1.3rem;
+            font-weight: bold;
+        }
+        .variance-value.positive { color: #7eb89a; }
+        .variance-value.negative { color: #e07a7a; }
+        .variance-label { font-size: 0.75rem; color: #9aa8b8; }
+        .variance-section {
+            margin-top: 1rem;
+        }
+        .variance-section h4 {
+            font-size: 0.9rem;
+            color: #9aa8b8;
+            margin-bottom: 0.5rem;
+        }
+        .variance-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+        .variance-table th, .variance-table td {
+            padding: 0.4rem 0.75rem;
+            text-align: right;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .variance-table th { color: #9aa8b8; font-weight: normal; }
+        .variance-table th:first-child, .variance-table td:first-child { text-align: left; }
+        .variance-table .positive { color: #7eb89a; }
+        .variance-table .negative { color: #e07a7a; }
+        .loading {
+            text-align: center;
+            padding: 3rem;
+            color: #888;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <img src="sarah.jpg" alt="" class="header-bg">
+        <h1>Blizzard</h1>
+        <span class="subtitle">Sales Forecaster</span>
+        <div id="backtest-badge" class="backtest-badge" style="display:none">BACKTEST MODE</div>
+        <div class="header-controls">
+            <label><input type="checkbox" id="cumulative-toggle"> Cumulative YTD</label>
+            <label><input type="checkbox" id="zoom-toggle"> Zoom (3yr)</label>
+            <label><input type="checkbox" id="backtest-toggle"> Backtest (-1yr)</label>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="tabs" id="tabs">
+            <div class="tab active" data-tab="overall">Overall</div>
+            <div class="tab" data-tab="products">Product Groups</div>
+            <div class="tab" data-tab="customers">Customers</div>
+            <div class="tab" data-tab="geography">Geography</div>
+        </div>
+
+        <div id="content">
+            <div class="loading">Loading forecast data...</div>
+        </div>
+    </div>
+
+    <div class="tooltip" id="tooltip" style="display:none"></div>
+
+    <script>
+        let data = null;
+        let currentTab = 'overall';
+        let currentSelection = null; // Preserve dropdown selection
+        let zoomEnabled = false;
+        let cumulativeEnabled = false;
+
+        async function loadData() {
+            try {
+                // Try CGI endpoint first, fall back to static JSON
+                const params = new URLSearchParams(window.location.search);
+                const cutoff = params.get('cutoff');
+                const cgiUrl = cutoff ? `/cgi-bin/blizzard?cutoff=${cutoff}` : '/cgi-bin/blizzard';
+
+                let response;
+                try {
+                    response = await fetch(cgiUrl);
+                } catch {
+                    // Fallback to static file for local testing
+                    response = await fetch('forecast_results.json');
+                }
+                data = await response.json();
+
+                if (data.backtestMode) {
+                    document.getElementById('backtest-badge').style.display = 'block';
+                    document.getElementById('backtest-badge').textContent =
+                        `BACKTEST: Cutoff ${data.cutoffDate}`;
+                }
+
+                renderTab('overall');
+            } catch (e) {
+                document.getElementById('content').innerHTML =
+                    `<div class="loading">Error loading data: ${e.message}</div>`;
+            }
+        }
+
+        function renderTab(tab) {
+            currentTab = tab;
+            document.querySelectorAll('.tab').forEach(t =>
+                t.classList.toggle('active', t.dataset.tab === tab));
+
+            const content = document.getElementById('content');
+
+            if (tab === 'overall') {
+                const standardLegend = `
+                    <div class="legend">
+                        <div class="legend-item"><div class="legend-color historical"></div>Historical</div>
+                        <div class="legend-item"><div class="legend-color forecast"></div>Forecast</div>
+                        ${data.backtestMode ? '<div class="legend-item"><div class="legend-color actual"></div>Actual</div>' : ''}
+                        <div class="legend-item" title="There is an 80% probability that the actual value will fall within this shaded range"><div class="legend-color confidence"></div>80% Confidence</div>
+                    </div>`;
+                const cumulativeLegend = `
+                    <div class="legend">
+                        <div class="legend-item"><div class="legend-color historical"></div>Solid = Historical</div>
+                        <div class="legend-item"><div class="legend-color forecast" style="background: repeating-linear-gradient(90deg, #c4a35a 0, #c4a35a 5px, transparent 5px, transparent 10px);"></div>Dashed = Forecast</div>
+                        ${data.backtestMode ? '<div class="legend-item"><div class="legend-color actual"></div>Green = Actual</div>' : ''}
+                    </div>`;
+                content.innerHTML = `
+                    <div class="chart-container">
+                        <div class="chart-title">Overall Sales Forecast${cumulativeEnabled ? ' (Cumulative YTD)' : ''}</div>
+                        <div id="overall-chart"></div>
+                        ${cumulativeEnabled ? cumulativeLegend : standardLegend}
+                        <div class="metrics-grid" id="overall-metrics"></div>
+                        <div id="overall-year-table"></div>
+                    </div>
+                `;
+                renderChart('overall-chart', data.overall);
+                renderMetrics('overall-metrics', data.overall);
+                renderYearTable('overall-year-table', data.overall);
+            } else if (tab === 'products') {
+                renderProductGroupsTab(content);
+            } else if (tab === 'geography') {
+                renderGeographyTab(content);
+            } else if (tab === 'customers') {
+                // Customers with autocomplete
+                const items = data.customers;
+                const keys = Object.keys(items);
+
+                content.innerHTML = `
+                    <div class="selector-row">
+                        <div class="selector">
+                            <label>Select Customer (type to search ${keys.length} customers)</label>
+                            <div class="autocomplete-wrapper">
+                                <input type="text" id="item-search" placeholder="Type customer name or code..." autocomplete="off">
+                                <div class="autocomplete-list" id="autocomplete-list"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <div class="chart-title" id="chart-title">${keys[0]} Forecast${cumulativeEnabled ? ' (Cumulative YTD)' : ''}</div>
+                        <div id="detail-chart"></div>
+                        ${cumulativeEnabled ? `
+                            <div class="legend">
+                                <div class="legend-item"><div class="legend-color historical"></div>Solid = Historical</div>
+                                <div class="legend-item"><div class="legend-color forecast" style="background: repeating-linear-gradient(90deg, #c4a35a 0, #c4a35a 5px, transparent 5px, transparent 10px);"></div>Dashed = Forecast</div>
+                                ${data.backtestMode ? '<div class="legend-item"><div class="legend-color actual"></div>Green = Actual</div>' : ''}
+                            </div>
+                        ` : `
+                            <div class="legend">
+                                <div class="legend-item"><div class="legend-color historical"></div>Historical</div>
+                                <div class="legend-item"><div class="legend-color forecast"></div>Forecast</div>
+                                ${data.backtestMode ? '<div class="legend-item"><div class="legend-color actual"></div>Actual</div>' : ''}
+                                <div class="legend-item" title="There is an 80% probability that the actual value will fall within this shaded range"><div class="legend-color confidence"></div>80% Confidence</div>
+                            </div>
+                        `}
+                        <div class="metrics-grid" id="detail-metrics"></div>
+                        <div id="detail-year-table"></div>
+                    </div>
+                `;
+
+                const initialKey = (currentSelection && keys.includes(currentSelection)) ? currentSelection : keys[0];
+
+                const searchInput = document.getElementById('item-search');
+                const listEl = document.getElementById('autocomplete-list');
+                let activeIdx = -1;
+
+                searchInput.value = initialKey;
+
+                const showResults = (query) => {
+                    const q = query.toLowerCase();
+                    const matches = q ? keys.filter(k => k.toLowerCase().includes(q)).slice(0, 20) : keys.slice(0, 20);
+                    activeIdx = -1;
+                    listEl.innerHTML = matches.map((k, i) => `<div class="autocomplete-item" data-key="${k}">${k}</div>`).join('');
+                    listEl.classList.toggle('show', matches.length > 0);
+                };
+
+                const selectItem = (key) => {
+                    searchInput.value = key;
+                    listEl.classList.remove('show');
+                    currentSelection = key;
+                    document.getElementById('chart-title').textContent = `${key} Forecast`;
+                    renderChart('detail-chart', items[key]);
+                    renderMetrics('detail-metrics', items[key]);
+                    renderYearTable('detail-year-table', items[key]);
+                };
+
+                searchInput.addEventListener('input', () => showResults(searchInput.value));
+                searchInput.addEventListener('focus', () => showResults(searchInput.value));
+
+                searchInput.addEventListener('keydown', (e) => {
+                    const visibleItems = listEl.querySelectorAll('.autocomplete-item');
+                    if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        activeIdx = Math.min(activeIdx + 1, visibleItems.length - 1);
+                        visibleItems.forEach((el, i) => el.classList.toggle('active', i === activeIdx));
+                    } else if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        activeIdx = Math.max(activeIdx - 1, 0);
+                        visibleItems.forEach((el, i) => el.classList.toggle('active', i === activeIdx));
+                    } else if (e.key === 'Enter' && activeIdx >= 0) {
+                        e.preventDefault();
+                        selectItem(visibleItems[activeIdx].dataset.key);
+                    } else if (e.key === 'Escape') {
+                        listEl.classList.remove('show');
+                    }
+                });
+
+                listEl.addEventListener('click', (e) => {
+                    const item = e.target.closest('.autocomplete-item');
+                    if (item) selectItem(item.dataset.key);
+                });
+
+                document.addEventListener('click', (e) => {
+                    if (!e.target.closest('.autocomplete-wrapper')) listEl.classList.remove('show');
+                });
+
+                document.getElementById('chart-title').textContent = `${initialKey} Forecast`;
+                renderChart('detail-chart', items[initialKey]);
+                renderMetrics('detail-metrics', items[initialKey]);
+                renderYearTable('detail-year-table', items[initialKey]);
+            }
+        }
+
+        function renderProductGroupsTab(content) {
+            const forecasts = data.productGroups;
+            const names = data.productGroupNames || {};
+
+            // Build hierarchy: top (2 char) -> mid (4 char) -> leaf (6+ char)
+            const hierarchy = {};
+            Object.keys(forecasts).forEach(code => {
+                const topCode = code.substring(0, 2);
+                const midCode = code.length >= 4 ? code.substring(0, 4) : null;
+                const isLeaf = code.length > 4;
+
+                if (!hierarchy[topCode]) {
+                    hierarchy[topCode] = { name: names[topCode] || topCode, mids: {} };
+                }
+
+                if (midCode && midCode !== topCode) {
+                    if (!hierarchy[topCode].mids[midCode]) {
+                        hierarchy[topCode].mids[midCode] = { name: names[midCode] || midCode, leaves: [] };
+                    }
+                    if (isLeaf) {
+                        hierarchy[topCode].mids[midCode].leaves.push({
+                            code: code,
+                            name: names[code] || code
+                        });
+                    }
+                }
+            });
+
+            // Sort top-level groups by name
+            const sortedTops = Object.entries(hierarchy)
+                .sort((a, b) => a[1].name.localeCompare(b[1].name));
+
+            content.innerHTML = `
+                <div class="selector-row">
+                    <div class="selector">
+                        <label>Category</label>
+                        <select id="pg-top">
+                            <option value="ALL">All Categories</option>
+                            ${sortedTops.map(([code, t]) => `<option value="${code}">${t.name} (${code})</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="selector">
+                        <label>Sub-Category</label>
+                        <select id="pg-mid" disabled>
+                            <option value="ALL">All Sub-Categories</option>
+                        </select>
+                    </div>
+                    <div class="selector">
+                        <label>Product Group</label>
+                        <select id="pg-leaf" disabled>
+                            <option value="ALL">All Product Groups</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <div class="chart-title" id="chart-title">All Categories Forecast${cumulativeEnabled ? ' (Cumulative YTD)' : ''}</div>
+                    <div id="detail-chart"></div>
+                    ${cumulativeEnabled ? `
+                        <div class="legend">
+                            <div class="legend-item"><div class="legend-color historical"></div>Solid = Historical</div>
+                            <div class="legend-item"><div class="legend-color forecast" style="background: repeating-linear-gradient(90deg, #c4a35a 0, #c4a35a 5px, transparent 5px, transparent 10px);"></div>Dashed = Forecast</div>
+                            ${data.backtestMode ? '<div class="legend-item"><div class="legend-color actual"></div>Green = Actual</div>' : ''}
+                        </div>
+                    ` : `
+                        <div class="legend">
+                            <div class="legend-item"><div class="legend-color historical"></div>Historical</div>
+                            <div class="legend-item"><div class="legend-color forecast"></div>Forecast</div>
+                            ${data.backtestMode ? '<div class="legend-item"><div class="legend-color actual"></div>Actual</div>' : ''}
+                            <div class="legend-item" title="There is an 80% probability that the actual value will fall within this shaded range"><div class="legend-color confidence"></div>80% Confidence</div>
+                        </div>
+                    `}
+                    <div class="metrics-grid" id="detail-metrics"></div>
+                    <div id="detail-year-table"></div>
+                </div>
+            `;
+
+            const topSelect = document.getElementById('pg-top');
+            const midSelect = document.getElementById('pg-mid');
+            const leafSelect = document.getElementById('pg-leaf');
+
+            function updateChart() {
+                const topCode = topSelect.value;
+                const midCode = midSelect.value;
+                const leafCode = leafSelect.value;
+
+                let forecastKey, title;
+
+                if (topCode === 'ALL') {
+                    // Show overall
+                    document.getElementById('chart-title').textContent = 'Overall Forecast' + (cumulativeEnabled ? ' (Cumulative YTD)' : '');
+                    renderChart('detail-chart', data.overall);
+                    renderMetrics('detail-metrics', data.overall);
+                    renderYearTable('detail-year-table', data.overall);
+                    return;
+                } else if (midCode === 'ALL') {
+                    forecastKey = topCode;
+                    title = hierarchy[topCode].name;
+                } else if (leafCode === 'ALL') {
+                    forecastKey = midCode;
+                    title = hierarchy[topCode].mids[midCode]?.name || midCode;
+                } else {
+                    forecastKey = leafCode;
+                    const leaf = hierarchy[topCode].mids[midCode]?.leaves.find(l => l.code === leafCode);
+                    title = leaf?.name || leafCode;
+                }
+
+                document.getElementById('chart-title').textContent = title + ' Forecast' + (cumulativeEnabled ? ' (Cumulative YTD)' : '');
+
+                if (forecasts[forecastKey]) {
+                    renderChart('detail-chart', forecasts[forecastKey]);
+                    renderMetrics('detail-metrics', forecasts[forecastKey]);
+                    renderYearTable('detail-year-table', forecasts[forecastKey]);
+                } else {
+                    document.getElementById('detail-chart').innerHTML = '<p style="color: #888; padding: 2rem;">No forecast data available for this selection (requires 24+ months of history)</p>';
+                    document.getElementById('detail-metrics').innerHTML = '';
+                    document.getElementById('detail-year-table').innerHTML = '';
+                }
+            }
+
+            topSelect.addEventListener('change', () => {
+                const topCode = topSelect.value;
+
+                // Update mid dropdown
+                midSelect.innerHTML = '<option value="ALL">All Sub-Categories</option>';
+                if (topCode !== 'ALL' && hierarchy[topCode]) {
+                    const mids = Object.entries(hierarchy[topCode].mids)
+                        .sort((a, b) => a[1].name.localeCompare(b[1].name));
+                    mids.forEach(([code, m]) => {
+                        midSelect.innerHTML += `<option value="${code}">${m.name} (${code})</option>`;
+                    });
+                    midSelect.disabled = mids.length === 0;
+                } else {
+                    midSelect.disabled = true;
+                }
+                midSelect.value = 'ALL';
+
+                // Reset leaf dropdown
+                leafSelect.innerHTML = '<option value="ALL">All Product Groups</option>';
+                leafSelect.disabled = true;
+                leafSelect.value = 'ALL';
+
+                updateChart();
+            });
+
+            midSelect.addEventListener('change', () => {
+                const topCode = topSelect.value;
+                const midCode = midSelect.value;
+
+                // Update leaf dropdown
+                leafSelect.innerHTML = '<option value="ALL">All Product Groups</option>';
+                if (midCode !== 'ALL' && hierarchy[topCode]?.mids[midCode]) {
+                    const leaves = hierarchy[topCode].mids[midCode].leaves
+                        .sort((a, b) => a.name.localeCompare(b.name));
+                    if (leaves.length > 0) {
+                        leaves.forEach(l => {
+                            leafSelect.innerHTML += `<option value="${l.code}">${l.name} (${l.code})</option>`;
+                        });
+                        leafSelect.disabled = false;
+                    } else {
+                        leafSelect.disabled = true;
+                    }
+                } else {
+                    leafSelect.disabled = true;
+                }
+                leafSelect.value = 'ALL';
+
+                updateChart();
+            });
+
+            leafSelect.addEventListener('change', updateChart);
+
+            // Initial render - show overall
+            updateChart();
+        }
+
+        function renderGeographyTab(content) {
+            const geo = data.geography;
+            const hierarchy = geo.hierarchy;
+            const forecasts = geo.forecasts;
+
+            // Build territory -> country -> region structure
+            const territories = {};
+            hierarchy.forEach(item => {
+                if (!territories[item.territoryCode]) {
+                    territories[item.territoryCode] = { name: item.territoryName, countries: {} };
+                }
+                const terr = territories[item.territoryCode];
+                if (!terr.countries[item.countryCode]) {
+                    terr.countries[item.countryCode] = { name: item.countryName, regions: {} };
+                }
+                terr.countries[item.countryCode].regions[item.regionCode] = {
+                    name: item.regionName,
+                    fullCode: item.fullCode
+                };
+            });
+
+            // Sort territories by name
+            const sortedTerritories = Object.entries(territories)
+                .sort((a, b) => a[1].name.localeCompare(b[1].name));
+
+            content.innerHTML = `
+                <div class="selector-row">
+                    <div class="selector">
+                        <label>Territory</label>
+                        <select id="geo-territory">
+                            <option value="ALL">All Territories</option>
+                            ${sortedTerritories.map(([code, t]) => `<option value="${code}">${t.name}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="selector">
+                        <label>Country</label>
+                        <select id="geo-country" disabled>
+                            <option value="ALL">All Countries</option>
+                        </select>
+                    </div>
+                    <div class="selector">
+                        <label>Region</label>
+                        <select id="geo-region" disabled>
+                            <option value="ALL">All Regions</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <div class="chart-title" id="chart-title">All Territories Forecast${cumulativeEnabled ? ' (Cumulative YTD)' : ''}</div>
+                    <div id="detail-chart"></div>
+                    ${cumulativeEnabled ? `
+                        <div class="legend">
+                            <div class="legend-item"><div class="legend-color historical"></div>Solid = Historical</div>
+                            <div class="legend-item"><div class="legend-color forecast" style="background: repeating-linear-gradient(90deg, #c4a35a 0, #c4a35a 5px, transparent 5px, transparent 10px);"></div>Dashed = Forecast</div>
+                            ${data.backtestMode ? '<div class="legend-item"><div class="legend-color actual"></div>Green = Actual</div>' : ''}
+                        </div>
+                    ` : `
+                        <div class="legend">
+                            <div class="legend-item"><div class="legend-color historical"></div>Historical</div>
+                            <div class="legend-item"><div class="legend-color forecast"></div>Forecast</div>
+                            ${data.backtestMode ? '<div class="legend-item"><div class="legend-color actual"></div>Actual</div>' : ''}
+                            <div class="legend-item" title="There is an 80% probability that the actual value will fall within this shaded range"><div class="legend-color confidence"></div>80% Confidence</div>
+                        </div>
+                    `}
+                    <div class="metrics-grid" id="detail-metrics"></div>
+                    <div id="detail-year-table"></div>
+                </div>
+            `;
+
+            const terrSelect = document.getElementById('geo-territory');
+            const countrySelect = document.getElementById('geo-country');
+            const regionSelect = document.getElementById('geo-region');
+
+            function updateChart() {
+                const terrCode = terrSelect.value;
+                const countryCode = countrySelect.value;
+                const regionCode = regionSelect.value;
+
+                let forecastKey, title;
+
+                if (terrCode === 'ALL') {
+                    // Show overall instead
+                    document.getElementById('chart-title').textContent = 'Overall Forecast' + (cumulativeEnabled ? ' (Cumulative YTD)' : '');
+                    renderChart('detail-chart', data.overall);
+                    renderMetrics('detail-metrics', data.overall);
+                    renderYearTable('detail-year-table', data.overall);
+                    return;
+                } else if (countryCode === 'ALL') {
+                    forecastKey = `${terrCode}__ALL`;
+                    title = territories[terrCode].name;
+                } else if (regionCode === 'ALL') {
+                    forecastKey = `${terrCode}${countryCode}__ALL`;
+                    title = `${territories[terrCode].countries[countryCode].name}`;
+                } else {
+                    forecastKey = `${terrCode}${countryCode}${regionCode}`;
+                    const regionName = territories[terrCode].countries[countryCode].regions[regionCode]?.name || regionCode;
+                    title = regionName === 'All' ? territories[terrCode].countries[countryCode].name : regionName;
+                }
+
+                document.getElementById('chart-title').textContent = title + ' Forecast' + (cumulativeEnabled ? ' (Cumulative YTD)' : '');
+
+                if (forecasts[forecastKey]) {
+                    renderChart('detail-chart', forecasts[forecastKey]);
+                    renderMetrics('detail-metrics', forecasts[forecastKey]);
+                    renderYearTable('detail-year-table', forecasts[forecastKey]);
+                } else {
+                    document.getElementById('detail-chart').innerHTML = '<p style="color: #888; padding: 2rem;">No forecast data available for this selection (requires 24+ months of history)</p>';
+                    document.getElementById('detail-metrics').innerHTML = '';
+                    document.getElementById('detail-year-table').innerHTML = '';
+                }
+            }
+
+            terrSelect.addEventListener('change', () => {
+                const terrCode = terrSelect.value;
+
+                // Update country dropdown
+                countrySelect.innerHTML = '<option value="ALL">All Countries</option>';
+                if (terrCode !== 'ALL' && territories[terrCode]) {
+                    const countries = Object.entries(territories[terrCode].countries)
+                        .sort((a, b) => a[1].name.localeCompare(b[1].name));
+                    countries.forEach(([code, c]) => {
+                        countrySelect.innerHTML += `<option value="${code}">${c.name}</option>`;
+                    });
+                    countrySelect.disabled = false;
+                } else {
+                    countrySelect.disabled = true;
+                }
+                countrySelect.value = 'ALL';
+
+                // Reset region dropdown
+                regionSelect.innerHTML = '<option value="ALL">All Regions</option>';
+                regionSelect.disabled = true;
+                regionSelect.value = 'ALL';
+
+                updateChart();
+            });
+
+            countrySelect.addEventListener('change', () => {
+                const terrCode = terrSelect.value;
+                const countryCode = countrySelect.value;
+
+                // Update region dropdown
+                regionSelect.innerHTML = '<option value="ALL">All Regions</option>';
+                if (countryCode !== 'ALL' && territories[terrCode]?.countries[countryCode]) {
+                    const regions = Object.entries(territories[terrCode].countries[countryCode].regions)
+                        .filter(([code, r]) => code !== 'AA') // Don't show "AA" as an option
+                        .sort((a, b) => a[1].name.localeCompare(b[1].name));
+
+                    if (regions.length > 0) {
+                        regions.forEach(([code, r]) => {
+                            regionSelect.innerHTML += `<option value="${code}">${r.name}</option>`;
+                        });
+                        regionSelect.disabled = false;
+                    } else {
+                        regionSelect.disabled = true;
+                    }
+                } else {
+                    regionSelect.disabled = true;
+                }
+                regionSelect.value = 'ALL';
+
+                updateChart();
+            });
+
+            regionSelect.addEventListener('change', updateChart);
+
+            // Initial render - show overall
+            updateChart();
+        }
+
+        function renderChart(containerId, forecastData) {
+            // Dispatch to cumulative chart if enabled
+            if (cumulativeEnabled) {
+                return renderCumulativeChart(containerId, forecastData);
+            }
+
+            const container = document.getElementById(containerId);
+            container.innerHTML = '';
+
+            const margin = {top: 20, right: 30, bottom: 50, left: 80};
+            const width = container.clientWidth - margin.left - margin.right;
+            const height = 400 - margin.top - margin.bottom;
+
+            const svg = d3.select(`#${containerId}`)
+                .append('svg')
+                .attr('width', width + margin.left + margin.right)
+                .attr('height', height + margin.top + margin.bottom)
+                .append('g')
+                .attr('transform', `translate(${margin.left},${margin.top})`);
+
+            const parseMonth = d3.timeParse('%Y-%m');
+
+            // Parse columnar format: rows are [month, value] for historical/actual
+            // and [month, value, lower, upper] for forecast
+            let historical = forecastData.historical.rows.map(r => ({
+                date: parseMonth(r[0]),
+                value: r[1],
+                type: 'historical'
+            }));
+
+            const forecast = forecastData.forecast.rows.map(r => ({
+                date: parseMonth(r[0]),
+                value: r[1],
+                type: 'forecast'
+            }));
+
+            let confidence = forecastData.forecast.rows.map(r => ({
+                date: parseMonth(r[0]),
+                lower: r[2],
+                upper: r[3]
+            }));
+
+            const actualRows = forecastData.actual?.rows || [];
+            const actual = actualRows.map(r => ({
+                date: parseMonth(r[0]),
+                value: r[1],
+                type: 'actual'
+            }));
+
+            // Apply zoom filter - show only last 3 years of historical + forecast
+            if (zoomEnabled && historical.length > 0) {
+                const lastHistDate = historical[historical.length - 1].date;
+                const threeYearsAgo = new Date(lastHistDate);
+                threeYearsAgo.setFullYear(threeYearsAgo.getFullYear() - 3);
+                historical = historical.filter(d => d.date >= threeYearsAgo);
+            }
+
+            const allData = [...historical, ...forecast, ...actual];
+            const allValues = [...allData.map(d => d.value),
+                              ...confidence.map(d => d.upper),
+                              ...confidence.map(d => d.lower)];
+
+            const x = d3.scaleTime()
+                .domain(d3.extent(allData, d => d.date))
+                .range([0, width]);
+
+            const y = d3.scaleLinear()
+                .domain([0, d3.max(allValues) * 1.1])
+                .nice()
+                .range([height, 0]);
+
+            // Grid
+            svg.append('g')
+                .attr('class', 'grid')
+                .call(d3.axisLeft(y)
+                    .tickSize(-width)
+                    .tickFormat('')
+                );
+
+            // Confidence area
+            const area = d3.area()
+                .x(d => x(d.date))
+                .y0(d => y(d.lower))
+                .y1(d => y(d.upper));
+
+            svg.append('path')
+                .datum(confidence)
+                .attr('fill', 'rgba(196, 163, 90, 0.2)')
+                .attr('d', area);
+
+            // Lines
+            const line = d3.line()
+                .x(d => x(d.date))
+                .y(d => y(d.value));
+
+            // Historical line
+            svg.append('path')
+                .datum(historical)
+                .attr('fill', 'none')
+                .attr('stroke', '#8fb3d4')
+                .attr('stroke-width', 2)
+                .attr('d', line);
+
+            // Forecast line
+            const forecastWithLast = [historical[historical.length - 1], ...forecast];
+            svg.append('path')
+                .datum(forecastWithLast)
+                .attr('fill', 'none')
+                .attr('stroke', '#c4a35a')
+                .attr('stroke-width', 2)
+                .attr('stroke-dasharray', '5,5')
+                .attr('d', line);
+
+            // Actual line (backtest)
+            if (actual.length > 0) {
+                const actualWithLast = [historical[historical.length - 1], ...actual];
+                svg.append('path')
+                    .datum(actualWithLast)
+                    .attr('fill', 'none')
+                    .attr('stroke', '#7eb89a')
+                    .attr('stroke-width', 2)
+                    .attr('d', line);
+
+            }
+
+            // Axes
+            svg.append('g')
+                .attr('class', 'axis')
+                .attr('transform', `translate(0,${height})`)
+                .call(d3.axisBottom(x).tickFormat(d3.timeFormat('%b %Y')))
+                .selectAll('text')
+                .attr('transform', 'rotate(-45)')
+                .style('text-anchor', 'end');
+
+            svg.append('g')
+                .attr('class', 'axis')
+                .call(d3.axisLeft(y).tickFormat(d => d3.format(',.0f')(d)));
+
+            // Y-axis label
+            svg.append('text')
+                .attr('transform', 'rotate(-90)')
+                .attr('y', -60)
+                .attr('x', -height / 2)
+                .attr('fill', '#888')
+                .attr('text-anchor', 'middle')
+                .text('Value');
+
+            // Tooltip interaction
+            const tooltip = d3.select('#tooltip');
+            const bisect = d3.bisector(d => d.date).left;
+
+            svg.append('rect')
+                .attr('width', width)
+                .attr('height', height)
+                .attr('fill', 'transparent')
+                .on('mousemove', function(event) {
+                    const [mx] = d3.pointer(event);
+                    const date = x.invert(mx);
+
+                    let closest = null;
+                    let minDist = Infinity;
+
+                    allData.forEach(d => {
+                        const dist = Math.abs(d.date - date);
+                        if (dist < minDist) {
+                            minDist = dist;
+                            closest = d;
+                        }
+                    });
+
+                    if (closest) {
+                        const confIdx = confidence.findIndex(c =>
+                            c.date.getTime() === closest.date.getTime());
+
+                        let html = `
+                            <strong>${d3.timeFormat('%B %Y')(closest.date)}</strong><br>
+                            ${closest.type.charAt(0).toUpperCase() + closest.type.slice(1)}:
+                            ${d3.format(',.2f')(closest.value)}
+                        `;
+
+                        if (confIdx >= 0) {
+                            html += `<br>Range: ${d3.format(',.0f')(confidence[confIdx].lower)} - ${d3.format(',.0f')(confidence[confIdx].upper)}`;
+                        }
+
+                        tooltip
+                            .style('display', 'block')
+                            .style('left', (event.pageX + 10) + 'px')
+                            .style('top', (event.pageY - 10) + 'px')
+                            .html(html);
+                    }
+                })
+                .on('mouseleave', () => tooltip.style('display', 'none'));
+
+            // Actual dots (clickable for drill-down) - drawn last to be on top
+            if (actual.length > 0) {
+                svg.selectAll('.actual-dot')
+                    .data(actual)
+                    .enter()
+                    .append('circle')
+                    .attr('class', 'actual-dot')
+                    .attr('cx', d => x(d.date))
+                    .attr('cy', d => y(d.value))
+                    .attr('r', 5)
+                    .attr('fill', '#7eb89a')
+                    .attr('stroke', '#fff')
+                    .attr('stroke-width', 1)
+                    .style('cursor', 'pointer')
+                    .on('click', function(event, d) {
+                        event.stopPropagation();
+                        const monthKey = d3.timeFormat('%Y-%m')(d.date);
+                        showMonthDrilldown(monthKey);
+                    })
+                    .on('mouseover', function() { d3.select(this).attr('r', 7); })
+                    .on('mouseout', function() { d3.select(this).attr('r', 5); });
+            }
+        }
+
+        function renderCumulativeChart(containerId, forecastData) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = '';
+
+            const margin = {top: 20, right: 120, bottom: 50, left: 80};
+            const width = container.clientWidth - margin.left - margin.right;
+            const height = 400 - margin.top - margin.bottom;
+
+            const svg = d3.select(`#${containerId}`)
+                .append('svg')
+                .attr('width', width + margin.left + margin.right)
+                .attr('height', height + margin.top + margin.bottom)
+                .append('g')
+                .attr('transform', `translate(${margin.left},${margin.top})`);
+
+            const parseMonth = d3.timeParse('%Y-%m');
+            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+            // Combine all data sources
+            const allRows = [
+                ...forecastData.historical.rows.map(r => ({ month: r[0], value: r[1], type: 'historical' })),
+                ...forecastData.forecast.rows.map(r => ({ month: r[0], value: r[1], type: 'forecast' })),
+                ...(forecastData.actual?.rows || []).map(r => ({ month: r[0], value: r[1], type: 'actual' }))
+            ];
+
+            // Group by year and type - use composite keys for ALL types to handle split years
+            const yearData = {};
+            allRows.forEach(r => {
+                const [year, month] = r.month.split('-').map(Number);
+                // Use composite key for all types to properly separate them
+                const key = `${year}-${r.type}`;
+                if (!yearData[key]) yearData[key] = { months: {}, type: r.type, year };
+                yearData[key].months[month] = (yearData[key].months[month] || 0) + r.value;
+            });
+
+            // Build cumulative series for each year
+            let keys = Object.keys(yearData);
+
+            // Apply zoom filter - only show last 3 historical years + forecast/actual year
+            if (zoomEnabled) {
+                const historicalYears = keys
+                    .filter(k => yearData[k].type === 'historical')
+                    .map(k => yearData[k].year)
+                    .sort((a, b) => a - b);
+                if (historicalYears.length > 0) {
+                    const lastHistYear = historicalYears[historicalYears.length - 1];
+                    const cutoffYearStart = lastHistYear - 3;
+                    const cutoffYearEnd = lastHistYear + 1; // Only show up to forecast year
+                    keys = keys.filter(k => yearData[k].year > cutoffYearStart && yearData[k].year <= cutoffYearEnd);
+                }
+            }
+
+            const cumulativeSeries = [];
+
+            keys.forEach(key => {
+                const yd = yearData[key];
+                let cumulative = 0;
+                const points = [];
+
+                for (let m = 1; m <= 12; m++) {
+                    if (yd.months[m] !== undefined) {
+                        cumulative += yd.months[m];
+                        points.push({ month: m, value: cumulative, year: yd.year, type: yd.type });
+                    }
+                }
+
+                if (points.length > 0) {
+                    cumulativeSeries.push({ key, year: yd.year, points, type: yd.type });
+                }
+            });
+
+            // Sort series by year then type (historical before forecast before actual)
+            const typeOrder = { historical: 0, forecast: 1, actual: 2 };
+            cumulativeSeries.sort((a, b) => a.year - b.year || typeOrder[a.type] - typeOrder[b.type]);
+
+            // Color scale - actual gets special green color
+            const years = [...new Set(cumulativeSeries.map(s => s.year))];
+            const colorScale = d3.scaleOrdinal()
+                .domain(years)
+                .range(d3.schemeTableau10);
+            const actualColor = '#7eb89a'; // Green for actual
+
+            // Scales
+            const x = d3.scaleLinear()
+                .domain([1, 12])
+                .range([0, width]);
+
+            const maxValue = d3.max(cumulativeSeries, s => d3.max(s.points, p => p.value));
+            const y = d3.scaleLinear()
+                .domain([0, maxValue * 1.1])
+                .nice()
+                .range([height, 0]);
+
+            // Grid
+            svg.append('g')
+                .attr('class', 'grid')
+                .call(d3.axisLeft(y).tickSize(-width).tickFormat(''));
+
+            // Line generator
+            const line = d3.line()
+                .x(d => x(d.month))
+                .y(d => y(d.value));
+
+            // Draw lines for each year
+            cumulativeSeries.forEach(series => {
+                const isForecast = series.type === 'forecast';
+                const isActual = series.type === 'actual';
+                const lineColor = isActual ? actualColor : colorScale(series.year);
+                svg.append('path')
+                    .datum(series.points)
+                    .attr('fill', 'none')
+                    .attr('stroke', lineColor)
+                    .attr('stroke-width', series.year === years[years.length - 1] ? 3 : 2)
+                    .attr('stroke-dasharray', isForecast ? '5,5' : 'none')
+                    .attr('opacity', isForecast ? 0.8 : 1)
+                    .attr('d', line);
+
+                // Add year label at end of line
+                const lastPoint = series.points[series.points.length - 1];
+                const labelSuffix = isActual ? ' (actual)' : (isForecast ? ' (fcst)' : '');
+                svg.append('text')
+                    .attr('x', x(lastPoint.month) + 5)
+                    .attr('y', y(lastPoint.value))
+                    .attr('fill', lineColor)
+                    .attr('font-size', '11px')
+                    .attr('alignment-baseline', 'middle')
+                    .text(series.year + labelSuffix);
+            });
+
+            // X axis with month names
+            svg.append('g')
+                .attr('class', 'axis')
+                .attr('transform', `translate(0,${height})`)
+                .call(d3.axisBottom(x)
+                    .ticks(12)
+                    .tickFormat(d => monthNames[d - 1] || ''));
+
+            // Y axis
+            svg.append('g')
+                .attr('class', 'axis')
+                .call(d3.axisLeft(y).tickFormat(d => d3.format(',.0f')(d)));
+
+            // Y-axis label
+            svg.append('text')
+                .attr('transform', 'rotate(-90)')
+                .attr('y', -60)
+                .attr('x', -height / 2)
+                .attr('fill', '#888')
+                .attr('text-anchor', 'middle')
+                .text('Cumulative Value');
+
+            // Tooltip
+            const tooltip = d3.select('#tooltip');
+            const bisect = d3.bisector(d => d.month).left;
+
+            svg.append('rect')
+                .attr('width', width)
+                .attr('height', height)
+                .attr('fill', 'transparent')
+                .on('mousemove', function(event) {
+                    const [mx] = d3.pointer(event);
+                    const monthNum = Math.round(x.invert(mx));
+
+                    if (monthNum >= 1 && monthNum <= 12) {
+                        let html = `<strong>${monthNames[monthNum - 1]}</strong><br>`;
+                        cumulativeSeries.forEach(series => {
+                            const point = series.points.find(p => p.month === monthNum);
+                            if (point) {
+                                const tipColor = series.type === 'actual' ? actualColor : colorScale(series.year);
+                                const label = series.year + (series.type === 'actual' ? ' (actual)' : (series.type === 'forecast' ? ' (fcst)' : ''));
+                                html += `<span style="color:${tipColor}">${label}: ${d3.format(',.0f')(point.value)}</span><br>`;
+                            }
+                        });
+
+                        tooltip
+                            .style('display', 'block')
+                            .style('left', (event.pageX + 10) + 'px')
+                            .style('top', (event.pageY - 10) + 'px')
+                            .html(html);
+                    }
+                })
+                .on('mouseleave', () => tooltip.style('display', 'none'));
+        }
+
+        function renderMetrics(containerId, forecastData) {
+            const container = document.getElementById(containerId);
+
+            const metrics = forecastData.backtestMetrics;
+
+            // Only show metrics in backtest mode (out-of-sample validation)
+            if (!metrics) {
+                container.innerHTML = '';
+                return;
+            }
+
+            const accuracy = (100 - metrics.mape).toFixed(0);
+            const avgError = '£' + (metrics.mae / 1000).toLocaleString('en-GB', { maximumFractionDigits: 0 }) + 'k';
+
+            container.innerHTML = `<p style="color: #9aa8b8; font-size: 0.9rem; margin-top: 1rem;">Backtest: ${accuracy}% accuracy, ${avgError} avg monthly error</p>`;
+        }
+
+        // Tab click handlers
+        document.getElementById('tabs').addEventListener('click', e => {
+            if (e.target.classList.contains('tab')) {
+                const newTab = e.target.dataset.tab;
+                if (newTab !== currentTab) {
+                    currentSelection = null; // Reset selection when changing tabs
+                }
+                renderTab(newTab);
+            }
+        });
+
+        // Handle window resize
+        let resizeTimeout;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => renderTab(currentTab), 250);
+        });
+
+        // Backtest toggle
+        document.getElementById('backtest-toggle').addEventListener('change', async (e) => {
+            const contentDiv = document.getElementById('content');
+            contentDiv.innerHTML = '<div class="loading">Loading forecast data...</div>';
+
+            if (e.target.checked) {
+                // Calculate 1 year ago from the last data point
+                const lastMonth = new Date();
+                lastMonth.setFullYear(lastMonth.getFullYear() - 1);
+                const cutoff = `${lastMonth.getFullYear()}-${String(lastMonth.getMonth() + 1).padStart(2, '0')}`;
+
+                const response = await fetch(`/cgi-bin/blizzard?cutoff=${cutoff}`);
+                data = await response.json();
+            } else {
+                const response = await fetch('/cgi-bin/blizzard');
+                data = await response.json();
+            }
+
+            if (data.backtestMode) {
+                document.getElementById('backtest-badge').style.display = 'block';
+                document.getElementById('backtest-badge').textContent = `BACKTEST: Cutoff ${data.cutoffDate}`;
+            } else {
+                document.getElementById('backtest-badge').style.display = 'none';
+            }
+
+            currentSelection = null;
+            renderTab(currentTab);
+        });
+
+        // Zoom toggle
+        document.getElementById('zoom-toggle').addEventListener('change', (e) => {
+            zoomEnabled = e.target.checked;
+            renderTab(currentTab);
+        });
+
+        // Cumulative YTD toggle
+        document.getElementById('cumulative-toggle').addEventListener('change', (e) => {
+            cumulativeEnabled = e.target.checked;
+            renderTab(currentTab);
+        });
+
+        // Render year totals table with expandable monthly rows
+        function renderYearTable(containerId, forecastData) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+
+            // Aggregate by year and month from columnar format
+            const yearData = {};
+            const monthData = {};
+            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+            forecastData.historical.rows.forEach(r => {
+                const year = r[0].substring(0, 4);
+                const month = r[0];
+                if (!yearData[year]) yearData[year] = { historical: 0, forecast: 0, actual: 0 };
+                if (!monthData[month]) monthData[month] = { historical: 0, forecast: 0, actual: 0 };
+                yearData[year].historical += r[1];
+                monthData[month].historical = r[1];
+            });
+
+            forecastData.forecast.rows.forEach(r => {
+                const year = r[0].substring(0, 4);
+                const month = r[0];
+                if (!yearData[year]) yearData[year] = { historical: 0, forecast: 0, actual: 0 };
+                if (!monthData[month]) monthData[month] = { historical: 0, forecast: 0, actual: 0 };
+                yearData[year].forecast += r[1];
+                monthData[month].forecast = r[1];
+            });
+
+            if (forecastData.actual?.rows) {
+                forecastData.actual.rows.forEach(r => {
+                    const year = r[0].substring(0, 4);
+                    const month = r[0];
+                    if (!yearData[year]) yearData[year] = { historical: 0, forecast: 0, actual: 0 };
+                    if (!monthData[month]) monthData[month] = { historical: 0, forecast: 0, actual: 0 };
+                    yearData[year].actual += r[1];
+                    monthData[month].actual = r[1];
+                });
+            }
+
+            const years = Object.keys(yearData).sort();
+            const formatK = v => v > 0 ? '£' + (v / 1000).toLocaleString('en-GB', { maximumFractionDigits: 0 }) + 'k' : '-';
+
+            let html = `<table class="year-table">
+                <thead>
+                    <tr>
+                        <th>Year</th>
+                        <th>Historical</th>
+                        <th>Forecast</th>
+                        ${data.backtestMode ? '<th>Actual</th>' : ''}
+                    </tr>
+                </thead>
+                <tbody>`;
+
+            years.forEach(year => {
+                const yd = yearData[year];
+                const isForecast = yd.forecast > 0 && yd.historical === 0;
+                const hasActual = yd.actual > 0;
+                html += `<tr class="year-row ${isForecast ? 'forecast-row' : ''} ${hasActual ? 'actual-row' : ''}" data-year="${year}">
+                    <td>${year}</td>
+                    <td>${formatK(yd.historical)}</td>
+                    <td>${formatK(yd.forecast)}</td>
+                    ${data.backtestMode ? `<td>${formatK(yd.actual)}</td>` : ''}
+                </tr>`;
+
+                // Add month rows for this year
+                for (let m = 1; m <= 12; m++) {
+                    const monthKey = `${year}-${String(m).padStart(2, '0')}`;
+                    const md = monthData[monthKey];
+                    if (md) {
+                        const isMonthForecast = md.forecast > 0 && md.historical === 0;
+                        const hasMonthActual = md.actual > 0;
+                        const isClickable = data.backtestMode && hasMonthActual && md.forecast > 0;
+                        html += `<tr class="month-row ${isMonthForecast ? 'forecast-row' : ''} ${hasMonthActual ? 'actual-row' : ''} ${isClickable ? 'clickable' : ''}" data-year="${year}" data-month="${monthKey}">
+                            <td>${monthNames[m - 1]}${isClickable ? ' 🔍' : ''}</td>
+                            <td>${formatK(md.historical)}</td>
+                            <td>${formatK(md.forecast)}</td>
+                            ${data.backtestMode ? `<td>${formatK(md.actual)}</td>` : ''}
+                        </tr>`;
+                    }
+                }
+            });
+
+            html += '</tbody></table>';
+            container.innerHTML = html;
+
+            // Add click handlers for expandable rows
+            container.querySelectorAll('.year-row').forEach(row => {
+                row.addEventListener('click', () => {
+                    const year = row.dataset.year;
+                    const isExpanded = row.classList.toggle('expanded');
+                    container.querySelectorAll(`.month-row[data-year="${year}"]`).forEach(mr => {
+                        mr.classList.toggle('show', isExpanded);
+                    });
+                });
+            });
+
+            // Add click handlers for month drill-down (backtest mode only)
+            container.querySelectorAll('.month-row.clickable').forEach(row => {
+                row.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const monthKey = row.dataset.month;
+                    showMonthDrilldown(monthKey);
+                });
+            });
+        }
+
+        function showMonthDrilldown(monthKey) {
+            const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                               'July', 'August', 'September', 'October', 'November', 'December'];
+            const [year, month] = monthKey.split('-');
+            const monthName = monthNames[parseInt(month) - 1];
+            const formatK = v => '£' + (v / 1000).toLocaleString('en-GB', { maximumFractionDigits: 0 }) + 'k';
+            const formatPct = v => (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
+
+            // Get overall variance for this month
+            const overallForecast = data.overall.forecast.rows.find(r => r[0] === monthKey);
+            const overallActual = data.overall.actual.rows.find(r => r[0] === monthKey);
+
+            if (!overallForecast || !overallActual) return;
+
+            const totalForecast = overallForecast[1];
+            const totalActual = overallActual[1];
+            const totalVariance = totalActual - totalForecast;
+            const totalVariancePct = (totalVariance / totalForecast) * 100;
+
+            // Collect variances from each segment
+            const segments = [];
+
+            // Product Groups - show mid-level (4-char) where available, else top-level (2-char)
+            // Skip 6+ char codes (too detailed, already aggregated in their 4-char parents)
+            const pgCodes = Object.keys(data.productGroups);
+            const midLevelCodes = pgCodes.filter(c => c.length === 4);
+            const topLevelCodes = pgCodes.filter(c => c.length === 2);
+
+            // Use mid-level codes, plus top-level codes that have no mid-level children
+            const displayPgCodes = [
+                ...midLevelCodes,
+                ...topLevelCodes.filter(top => !midLevelCodes.some(mid => mid.startsWith(top)))
+            ];
+
+            displayPgCodes.forEach(code => {
+                const fg = data.productGroups[code];
+                const fc = fg.forecast.rows.find(r => r[0] === monthKey);
+                const ac = fg.actual?.rows?.find(r => r[0] === monthKey);
+                if (fc && ac) {
+                    const variance = ac[1] - fc[1];
+                    const displayName = data.productGroupNames?.[code] || code;
+                    segments.push({
+                        type: 'Product Group',
+                        name: `${displayName} (${code})`,
+                        forecast: fc[1],
+                        actual: ac[1],
+                        variance: variance,
+                        variancePct: (variance / fc[1]) * 100,
+                        contribution: (variance / totalVariance) * 100
+                    });
+                }
+            });
+
+            // Customers (top contributors only)
+            Object.entries(data.customers).forEach(([name, fg]) => {
+                const fc = fg.forecast.rows.find(r => r[0] === monthKey);
+                const ac = fg.actual?.rows?.find(r => r[0] === monthKey);
+                if (fc && ac) {
+                    const variance = ac[1] - fc[1];
+                    segments.push({
+                        type: 'Customer',
+                        name: name.length > 40 ? name.substring(0, 40) + '...' : name,
+                        forecast: fc[1],
+                        actual: ac[1],
+                        variance: variance,
+                        variancePct: (variance / fc[1]) * 100,
+                        contribution: (variance / totalVariance) * 100
+                    });
+                }
+            });
+
+            // Geography (territory level only - codes ending in __ALL with 2-char prefix)
+            Object.entries(data.geography.forecasts).forEach(([code, fg]) => {
+                if (!code.endsWith('__ALL') || code.length !== 7) return; // Territory level only (XX__ALL)
+                const fc = fg.forecast.rows.find(r => r[0] === monthKey);
+                const ac = fg.actual?.rows?.find(r => r[0] === monthKey);
+                if (fc && ac) {
+                    const terrCode = code.substring(0, 2);
+                    const terrName = data.geography.hierarchy.find(h => h.territoryCode === terrCode)?.territoryName || terrCode;
+                    const variance = ac[1] - fc[1];
+                    segments.push({
+                        type: 'Territory',
+                        name: terrName,
+                        forecast: fc[1],
+                        actual: ac[1],
+                        variance: variance,
+                        variancePct: (variance / fc[1]) * 100,
+                        contribution: (variance / totalVariance) * 100
+                    });
+                }
+            });
+
+            // Sort by absolute variance (biggest impact first)
+            segments.sort((a, b) => Math.abs(b.variance) - Math.abs(a.variance));
+
+            // Group by type (ordered: Customer, Territory, Product Group)
+            const byType = {
+                'Customer': segments.filter(s => s.type === 'Customer').slice(0, 10),
+                'Territory': segments.filter(s => s.type === 'Territory'),
+                'Product Group': segments.filter(s => s.type === 'Product Group').slice(0, 10)
+            };
+
+            // Build modal HTML
+            const varianceClass = totalVariance >= 0 ? 'positive' : 'negative';
+            let html = `
+                <div class="modal-overlay" onclick="this.remove()">
+                    <div class="modal" onclick="event.stopPropagation()">
+                        <div class="modal-header">
+                            <div class="modal-title">${monthName} ${year} - Variance Analysis</div>
+                            <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">×</button>
+                        </div>
+                        <div class="variance-summary">
+                            <div class="variance-box">
+                                <div class="variance-value">${formatK(totalForecast)}</div>
+                                <div class="variance-label">Forecast</div>
+                            </div>
+                            <div class="variance-box">
+                                <div class="variance-value">${formatK(totalActual)}</div>
+                                <div class="variance-label">Actual</div>
+                            </div>
+                            <div class="variance-box">
+                                <div class="variance-value ${varianceClass}">${formatK(totalVariance)}</div>
+                                <div class="variance-label">Variance</div>
+                            </div>
+                            <div class="variance-box">
+                                <div class="variance-value ${varianceClass}">${formatPct(totalVariancePct)}</div>
+                                <div class="variance-label">Variance %</div>
+                            </div>
+                        </div>`;
+
+            // Add tables for each segment type
+            Object.entries(byType).forEach(([type, items]) => {
+                if (items.length === 0) return;
+                html += `
+                    <div class="variance-section">
+                        <h4>${type}s (Top ${items.length})</h4>
+                        <table class="variance-table">
+                            <thead>
+                                <tr>
+                                    <th>${type}</th>
+                                    <th>Forecast</th>
+                                    <th>Actual</th>
+                                    <th>Variance</th>
+                                    <th>%</th>
+                                </tr>
+                            </thead>
+                            <tbody>`;
+                items.forEach(item => {
+                    const cls = item.variance >= 0 ? 'positive' : 'negative';
+                    html += `
+                                <tr>
+                                    <td>${item.name}</td>
+                                    <td>${formatK(item.forecast)}</td>
+                                    <td>${formatK(item.actual)}</td>
+                                    <td class="${cls}">${formatK(item.variance)}</td>
+                                    <td class="${cls}">${formatPct(item.variancePct)}</td>
+                                </tr>`;
+                });
+                html += `
+                            </tbody>
+                        </table>
+                    </div>`;
+            });
+
+            html += `
+                    </div>
+                </div>`;
+
+            // Add to document
+            document.body.insertAdjacentHTML('beforeend', html);
+        }
+
+        // Load data on page load
+        loadData();
+    </script>
+</body>
+</html>
