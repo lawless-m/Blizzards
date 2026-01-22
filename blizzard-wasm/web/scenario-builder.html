@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Blizzard Scenario Builder</title>
+    <link rel="stylesheet" href="scenario-builder.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🌨️ Blizzard Scenario Builder</h1>
+            <p class="subtitle">Create what-if scenarios by adjusting the statistical baseline</p>
+        </header>
+
+        <div class="main-content">
+            <!-- Left sidebar: Scenario list -->
+            <aside class="sidebar">
+                <div class="scenario-list">
+                    <div class="section-header">
+                        <h2>Scenarios</h2>
+                        <button id="new-scenario-btn" class="btn btn-primary" title="Create new scenario">
+                            + New
+                        </button>
+                    </div>
+                    <div id="scenario-items" class="scenario-items">
+                        <!-- Dynamically populated -->
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Main area: Current scenario details -->
+            <main class="main-area">
+                <div id="scenario-details">
+                    <div class="scenario-header">
+                        <h2 id="current-scenario-name">Baseline (no adjustments)</h2>
+                        <div class="scenario-actions">
+                            <button id="rename-scenario-btn" class="btn btn-secondary" style="display:none;">
+                                Rename
+                            </button>
+                            <button id="delete-scenario-btn" class="btn btn-danger" style="display:none;">
+                                Delete Scenario
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Adjustments section -->
+                    <section class="adjustments-section">
+                        <div class="section-header">
+                            <h3>Adjustments</h3>
+                            <button id="add-adjustment-btn" class="btn btn-primary" style="display:none;">
+                                + Add Adjustment
+                            </button>
+                        </div>
+                        <div id="adjustment-items" class="adjustment-items">
+                            <p class="empty-state">No adjustments. Select a scenario or create a new one to add adjustments.</p>
+                        </div>
+                    </section>
+
+                    <!-- Chart section -->
+                    <section class="chart-section">
+                        <h3>Forecast Comparison</h3>
+                        <div id="chart-container" class="chart-container">
+                            <p class="empty-state">Chart will appear here when scenario is calculated</p>
+                        </div>
+                    </section>
+
+                    <!-- Summary section -->
+                    <section class="summary-section">
+                        <h3>Summary</h3>
+                        <div id="summary-content" class="summary-content">
+                            <div class="summary-item">
+                                <span class="summary-label">Baseline Forecast:</span>
+                                <span id="baseline-total" class="summary-value">-</span>
+                            </div>
+                            <div class="summary-item">
+                                <span class="summary-label">Scenario Forecast:</span>
+                                <span id="scenario-total" class="summary-value">-</span>
+                            </div>
+                            <div class="summary-item">
+                                <span class="summary-label">Delta:</span>
+                                <span id="delta-value" class="summary-value summary-delta">-</span>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Add/Edit Adjustment Modal -->
+    <dialog id="adjustment-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-title">Add Adjustment</h2>
+                <button id="modal-close-btn" class="close-btn">&times;</button>
+            </div>
+
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="adjustment-type">Type:</label>
+                    <select id="adjustment-type" class="form-control">
+                        <option value="scale">Scale Existing</option>
+                        <option value="remove">Remove Existing</option>
+                        <option value="new_business">New Business</option>
+                    </select>
+                </div>
+
+                <!-- Scale/Remove fields -->
+                <div id="scale-fields" class="adjustment-fields">
+                    <div class="form-group">
+                        <label for="scale-target-type">Target Type:</label>
+                        <select id="scale-target-type" class="form-control">
+                            <option value="customer">Customer</option>
+                            <option value="product_group">Product Group</option>
+                            <option value="geography">Geography</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="scale-target-search">Search:</label>
+                        <input type="text" id="scale-target-search" class="form-control"
+                               placeholder="Type to search...">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="scale-target-select">Select:</label>
+                        <select id="scale-target-select" class="form-control" size="5">
+                            <!-- Dynamically populated -->
+                        </select>
+                    </div>
+
+                    <div class="form-group" id="scale-factor-group">
+                        <label for="scale-factor">Scale Factor (%):</label>
+                        <input type="number" id="scale-factor" class="form-control"
+                               value="100" min="0" max="500" step="1">
+                        <small class="form-help">100 = no change, 0 = remove, 150 = +50% growth</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="scale-note">Note:</label>
+                        <input type="text" id="scale-note" class="form-control"
+                               placeholder="Why this adjustment? (e.g., 'Losing shelf space to competitor')">
+                    </div>
+                </div>
+
+                <!-- New Business fields -->
+                <div id="new-business-fields" class="adjustment-fields" style="display:none;">
+                    <div class="form-group">
+                        <label for="nb-product-group">Product Group:</label>
+                        <select id="nb-product-group" class="form-control">
+                            <option value="">Select product group...</option>
+                            <option value="S5">S5 - Chilled</option>
+                            <option value="S1">S1 - Frozen</option>
+                            <option value="S2">S2 - Ambient</option>
+                            <!-- Add more as needed -->
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="nb-geography">Geography:</label>
+                        <select id="nb-geography" class="form-control">
+                            <option value="">Select geography...</option>
+                            <option value="MEAEDU">Middle East > UAE > Dubai</option>
+                            <option value="MEAEAR">Middle East > UAE > Abu Dhabi</option>
+                            <option value="EUR">Europe</option>
+                            <!-- Add more as needed -->
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="nb-start-month">Start Month:</label>
+                        <input type="month" id="nb-start-month" class="form-control">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="nb-year1">Year 1 Value (£):</label>
+                        <input type="number" id="nb-year1" class="form-control"
+                               min="0" step="1000" placeholder="50000">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="nb-year2">Year 2 Value (£):</label>
+                        <input type="number" id="nb-year2" class="form-control"
+                               min="0" step="1000" placeholder="100000">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="nb-year3">Year 3 Value (£):</label>
+                        <input type="number" id="nb-year3" class="form-control"
+                               min="0" step="1000" placeholder="150000">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="nb-note">Note:</label>
+                        <input type="text" id="nb-note" class="form-control"
+                               placeholder="Business justification (e.g., 'Dubai distributor confirmed')">
+                    </div>
+                </div>
+
+                <div id="modal-errors" class="modal-errors" style="display:none;"></div>
+            </div>
+
+            <div class="modal-footer">
+                <button id="cancel-adjustment-btn" class="btn btn-secondary">Cancel</button>
+                <button id="save-adjustment-btn" class="btn btn-primary">Add Adjustment</button>
+            </div>
+        </div>
+    </dialog>
+
+    <!-- New Scenario Modal -->
+    <dialog id="new-scenario-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>New Scenario</h2>
+                <button id="new-scenario-close-btn" class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="new-scenario-name">Scenario Name:</label>
+                    <input type="text" id="new-scenario-name" class="form-control"
+                           placeholder="e.g., 'Chilled ME Expansion'" autofocus>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="cancel-new-scenario-btn" class="btn btn-secondary">Cancel</button>
+                <button id="create-scenario-btn" class="btn btn-primary">Create</button>
+            </div>
+        </div>
+    </dialog>
+
+    <!-- Loading overlay -->
+    <div id="loading-overlay" class="loading-overlay" style="display:none;">
+        <div class="loading-spinner"></div>
+        <p>Calculating forecast...</p>
+    </div>
+
+    <!-- Scripts -->
+    <script type="module" src="scenario-builder.js"></script>
+</body>
+</html>
