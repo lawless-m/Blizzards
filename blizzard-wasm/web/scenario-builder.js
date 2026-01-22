@@ -13,7 +13,7 @@ import {
 } from './scenario-model.js';
 
 // Import WASM module
-import init, { forecast } from '../pkg/blizzard_wasm.js';
+import init, { forecast } from './blizzard_wasm.js';
 
 // Global state
 let cache = null;
