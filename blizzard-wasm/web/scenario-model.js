@@ -86,15 +86,33 @@ export function applyAdjustments(baselineData, adjustments) {
 function applyScaleAdjustment(data, adj) {
     const { target_type, target_key, factor } = adj;
 
-    // Scale the overall series if we're scaling a component
-    // This is a simplified implementation - in production, you'd need to:
+    console.log(`Applying scale adjustment: ${target_type}=${target_key}, factor=${factor}`);
+
+    // Simplified implementation for Phase 3:
+    // Apply the adjustment as a proportional scaling to the overall series
+    // In production with full data breakdowns, this would:
     // 1. Identify which rows in historical data belong to the target
     // 2. Scale those specific rows
     // 3. Recalculate the overall total
 
-    console.log(`Applying scale adjustment: ${target_type}=${target_key}, factor=${factor}`);
+    if (data.overall && data.overall.historical && data.overall.historical.rows) {
+        // Estimate the impact: assume the target represents some portion of the total
+        // For a customer, product, or geography adjustment, apply a proportional change
+        // This is a simplified heuristic: (factor - 1) * assumed_contribution
 
-    // For now, we'll add a metadata marker that the WASM recalculation will use
+        // For demonstration, assume the target represents 10% of total sales
+        const assumedContribution = 0.10;
+        const overallFactor = 1 + (factor - 1) * assumedContribution;
+
+        // Apply the overall factor to all historical rows
+        data.overall.historical.rows = data.overall.historical.rows.map(row => {
+            return [row[0], row[1] * overallFactor];
+        });
+
+        console.log(`  Applied overall factor ${overallFactor.toFixed(3)} (target factor: ${factor})`);
+    }
+
+    // Store metadata for reference
     if (!data.adjustments) {
         data.adjustments = [];
     }
@@ -147,7 +165,41 @@ function applyNewBusinessAdjustment(data, adj) {
     const seasonalPattern = getSeasonalPattern(data, product_group, geography);
     const seasonalizedValues = applySeasonalPattern(monthlyValues, seasonalPattern, startMonthNum - 1);
 
-    // Add to metadata for WASM processing
+    // Add the new business values to existing historical data
+    if (data.overall && data.overall.historical && data.overall.historical.rows) {
+        const rows = data.overall.historical.rows;
+
+        // Parse the dates to find where to start adding new business
+        // For simplicity in Phase 3, extend the historical series with new business values
+        // In production, this would integrate more carefully with the timeline
+
+        // Calculate the date range of existing data
+        if (rows.length > 0) {
+            const lastRow = rows[rows.length - 1];
+            const [lastDate] = lastRow;
+            const [lastYear, lastMonth] = lastDate.split('-').map(Number);
+
+            // Add new business starting from the last historical month
+            let currentYear = lastYear;
+            let currentMonth = lastMonth;
+
+            for (let i = 0; i < Math.min(seasonalizedValues.length, 12); i++) {
+                currentMonth++;
+                if (currentMonth > 12) {
+                    currentMonth = 1;
+                    currentYear++;
+                }
+
+                // Extend the historical series (this will affect the forecast)
+                const newDate = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
+                rows.push([newDate, seasonalizedValues[i]]);
+            }
+
+            console.log(`  Added ${Math.min(seasonalizedValues.length, 12)} months of new business data`);
+        }
+    }
+
+    // Store metadata for reference
     if (!data.adjustments) {
         data.adjustments = [];
     }

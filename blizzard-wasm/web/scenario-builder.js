@@ -13,7 +13,7 @@ import {
 } from './scenario-model.js';
 
 // Import WASM module
-import init, { forecast } from '../pkg/blizzard_wasm.js';
+import init, { forecast } from './blizzard_wasm.js';
 
 // Global state
 let cache = null;
@@ -68,17 +68,52 @@ async function initApp() {
 async function loadBaselineData() {
     const cached = await cache.getBaseline();
 
-    if (cached) {
-        console.log('Using cached baseline data');
-        baselineData = cached.data;
+    try {
+        // Try to fetch from server
+        console.log('Checking server for baseline data...');
+        const response = await fetch('/cgi-bin/blizzard', {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json'
+            }
+        });
 
-        // TODO: Check if cache is stale by comparing Last-Modified header
-        // For now, we'll use the cache
-    } else {
-        console.log('No cached data, using sample data for development');
-        // For development, create sample baseline data
-        baselineData = createSampleBaselineData();
-        await cache.saveBaseline(baselineData, new Date().toISOString());
+        if (response.ok) {
+            const lastModified = response.headers.get('Last-Modified') || new Date().toISOString();
+
+            // Check if we need to update the cache
+            const needsUpdate = !cached ||
+                                !cached.lastModified ||
+                                cached.lastModified !== lastModified;
+
+            if (needsUpdate) {
+                console.log('Fetching fresh baseline data from server');
+                const data = await response.json();
+
+                // Save to cache
+                await cache.saveBaseline(data, lastModified);
+                baselineData = data;
+                console.log('Baseline data cached');
+            } else {
+                console.log('Cached baseline data is up to date');
+                baselineData = cached.data;
+            }
+        } else {
+            throw new Error(`Server returned ${response.status}`);
+        }
+    } catch (error) {
+        console.warn('Failed to fetch from server:', error.message);
+
+        // Fall back to cache
+        if (cached) {
+            console.log('Using cached baseline data (offline mode)');
+            baselineData = cached.data;
+        } else {
+            console.log('No cached data available, using sample data for development');
+            // For development, create sample baseline data
+            baselineData = createSampleBaselineData();
+            await cache.saveBaseline(baselineData, new Date().toISOString());
+        }
     }
 
     // Calculate baseline forecast
@@ -122,6 +157,34 @@ function createSampleBaselineData() {
         product_groups: ['S5', 'S1', 'S2'],
         geographies: ['MEAEDU', 'MEAEAR', 'EUR']
     };
+}
+
+/**
+ * Manually refresh baseline data from server
+ */
+async function refreshBaselineData() {
+    try {
+        showLoading('Refreshing baseline data...');
+
+        // Clear the cache to force a fresh fetch
+        await cache.init(); // Re-initialize to ensure we can delete
+        const tx = cache.db.transaction(['baseline'], 'readwrite');
+        const store = tx.objectStore('baseline');
+        await store.delete('current');
+
+        // Reload the baseline data
+        await loadBaselineData();
+
+        // Recalculate the current scenario
+        await selectScenario(currentScenarioId);
+
+        hideLoading();
+        alert('Baseline data refreshed successfully!');
+    } catch (error) {
+        console.error('Failed to refresh baseline data:', error);
+        alert(`Failed to refresh: ${error.message}`);
+        hideLoading();
+    }
 }
 
 /**
@@ -361,6 +424,11 @@ function updateChart(baseline, scenario) {
  * Set up event listeners
  */
 function setupEventListeners() {
+    // Refresh baseline data button
+    document.getElementById('refresh-baseline-btn').addEventListener('click', async () => {
+        await refreshBaselineData();
+    });
+
     // New scenario button
     document.getElementById('new-scenario-btn').addEventListener('click', () => {
         showNewScenarioModal();
