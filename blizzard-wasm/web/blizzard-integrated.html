@@ -1,0 +1,1569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blizzard - Sales Forecaster</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #3a4552 0%, #2a3542 100%);
+            color: #e8eaed;
+            min-height: 100vh;
+        }
+        .header {
+            background: rgba(0,0,0,0.25);
+            padding: 2rem 2rem;
+            min-height: 120px;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            position: relative;
+            overflow: hidden;
+        }
+        .header-bg {
+            position: absolute;
+            left: 0;
+            top: 0;
+            height: 100%;
+            width: auto;
+            -webkit-mask-image: linear-gradient(to right, black 0%, black 25%, transparent 52%);
+            mask-image: linear-gradient(to right, black 0%, black 25%, transparent 52%);
+            opacity: 0.9;
+        }
+        .header h1 {
+            font-size: 1.5rem;
+            margin-left: 70px;
+            background: linear-gradient(90deg, #8fb3d4, #c4a35a);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .header .subtitle { color: #9aa8b8; font-size: 0.9rem; }
+        .backtest-badge {
+            background: #5a7a9a;
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: 1rem;
+            font-size: 0.75rem;
+        }
+        .header-controls {
+            margin-left: auto;
+            font-size: 0.85rem;
+            color: #9aa8b8;
+            z-index: 1;
+            display: flex;
+            gap: 1rem;
+        }
+        .header-controls input {
+            margin-right: 0.25rem;
+        }
+        .year-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+            font-size: 0.9rem;
+        }
+        .year-table th, .year-table td {
+            padding: 0.5rem 1rem;
+            text-align: right;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .year-table th {
+            color: #9aa8b8;
+            font-weight: normal;
+            text-align: right;
+        }
+        .year-table th:first-child, .year-table td:first-child {
+            text-align: left;
+        }
+        .year-table tr:hover {
+            background: rgba(255,255,255,0.05);
+        }
+        .year-table .year-row {
+            cursor: pointer;
+        }
+        .year-table .year-row td:first-child::before {
+            content: '\25B6 ';
+            font-size: 0.7em;
+            margin-right: 0.3rem;
+            transition: transform 0.2s;
+            display: inline-block;
+        }
+        .year-table .year-row.expanded td:first-child::before {
+            transform: rotate(90deg);
+        }
+        .year-table .month-row {
+            display: none;
+            font-size: 0.85em;
+            color: #9aa8b8;
+        }
+        .year-table .month-row.show {
+            display: table-row;
+        }
+        .year-table .month-row td:first-child {
+            padding-left: 2rem;
+        }
+        .year-table .forecast-row {
+            color: #c4a35a;
+        }
+        .year-table .actual-row {
+            color: #7eb89a;
+        }
+        .container { padding: 1.5rem 2rem; }
+        .tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+        }
+        .tab {
+            padding: 0.5rem 1rem;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 0.5rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .tab:hover { background: rgba(255,255,255,0.1); }
+        .tab.active {
+            background: linear-gradient(135deg, #5a7a9a, #8fb3d4);
+            border-color: transparent;
+        }
+        .tab.scenarios-tab {
+            background: linear-gradient(135deg, #5a9a7a, #8fd4b3);
+            border-color: transparent;
+        }
+        .tab.scenarios-tab:not(.active) {
+            background: rgba(90, 154, 122, 0.3);
+            border-color: rgba(90, 154, 122, 0.5);
+        }
+        .chart-container {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 1rem;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .chart-title {
+            font-size: 1.1rem;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .selector-row {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+        .selector {
+            flex: 1;
+            min-width: 200px;
+        }
+        .selector label {
+            display: block;
+            font-size: 0.8rem;
+            color: #888;
+            margin-bottom: 0.25rem;
+        }
+        .selector select, .selector input {
+            width: 100%;
+            padding: 0.5rem;
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 0.5rem;
+            color: #eee;
+            font-size: 0.9rem;
+        }
+        .autocomplete-wrapper {
+            position: relative;
+        }
+        .autocomplete-list {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            max-height: 300px;
+            overflow-y: auto;
+            background: rgba(30,35,40,0.98);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 0.5rem;
+            z-index: 100;
+            display: none;
+        }
+        .autocomplete-list.show { display: block; }
+        .autocomplete-item {
+            padding: 0.5rem 0.75rem;
+            cursor: pointer;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .autocomplete-item:hover, .autocomplete-item.active {
+            background: rgba(255,255,255,0.1);
+        }
+        .autocomplete-item .code {
+            color: #888;
+            font-size: 0.8rem;
+        }
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        .metric-card {
+            background: rgba(255,255,255,0.05);
+            padding: 1rem;
+            border-radius: 0.5rem;
+            text-align: center;
+        }
+        .metric-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            background: linear-gradient(90deg, #8fb3d4, #c4a35a);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .metric-label { font-size: 0.75rem; color: #9aa8b8; margin-top: 0.25rem; }
+        .legend {
+            display: flex;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+            margin-top: 1rem;
+            font-size: 0.85rem;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .legend-color {
+            width: 20px;
+            height: 3px;
+            border-radius: 2px;
+        }
+        .legend-color.historical { background: #8fb3d4; }
+        .legend-color.forecast { background: #c4a35a; }
+        .legend-color.actual { background: #7eb89a; }
+        .legend-color.confidence { background: rgba(196, 163, 90, 0.25); height: 12px; }
+        .legend-color.scenario { background: #e07a7a; }
+        svg { overflow: visible; }
+        .axis path, .axis line { stroke: rgba(255,255,255,0.2); }
+        .axis text { fill: #888; font-size: 11px; }
+        .grid line { stroke: rgba(255,255,255,0.05); }
+        .tooltip {
+            position: absolute;
+            background: rgba(0,0,0,0.9);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 0.5rem;
+            padding: 0.75rem;
+            font-size: 0.8rem;
+            pointer-events: none;
+            z-index: 100;
+        }
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.7);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal {
+            background: #2a3542;
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 1rem;
+            padding: 1.5rem;
+            max-width: 800px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .modal-title {
+            font-size: 1.2rem;
+        }
+        .modal-close {
+            background: none;
+            border: none;
+            color: #888;
+            font-size: 1.5rem;
+            cursor: pointer;
+        }
+        .modal-close:hover { color: #fff; }
+        .loading {
+            text-align: center;
+            padding: 3rem;
+            color: #888;
+        }
+
+        /* Scenario Builder Styles */
+        .scenario-content {
+            display: flex;
+            gap: 1.5rem;
+        }
+        .scenario-sidebar {
+            width: 280px;
+            flex-shrink: 0;
+        }
+        .scenario-main {
+            flex: 1;
+            min-width: 0;
+        }
+        .scenario-list-container {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 1rem;
+            padding: 1rem;
+        }
+        .scenario-list-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        .scenario-list-header h3 {
+            font-size: 1rem;
+            color: #9aa8b8;
+        }
+        .scenario-item {
+            padding: 0.75rem 1rem;
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 0.5rem;
+            cursor: pointer;
+            margin-bottom: 0.5rem;
+            transition: all 0.2s;
+        }
+        .scenario-item:hover {
+            border-color: #5a9a7a;
+            background: rgba(90,154,122,0.1);
+        }
+        .scenario-item.active {
+            border-color: #5a9a7a;
+            background: rgba(90,154,122,0.2);
+        }
+        .scenario-item.baseline {
+            font-style: italic;
+            color: #9aa8b8;
+        }
+        .btn {
+            padding: 0.4rem 0.8rem;
+            border: none;
+            border-radius: 0.4rem;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-primary {
+            background: #5a9a7a;
+            color: white;
+        }
+        .btn-primary:hover {
+            background: #4a8a6a;
+        }
+        .btn-secondary {
+            background: rgba(255,255,255,0.1);
+            color: #e8eaed;
+        }
+        .btn-secondary:hover {
+            background: rgba(255,255,255,0.2);
+        }
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+        .btn-danger:hover {
+            background: #c82333;
+        }
+        .adjustment-list {
+            margin-top: 1rem;
+        }
+        .adjustment-item {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 0.5rem;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            position: relative;
+        }
+        .adjustment-item strong {
+            color: #8fd4b3;
+        }
+        .adjustment-item em {
+            color: #9aa8b8;
+            font-size: 0.85rem;
+        }
+        .adjustment-actions {
+            position: absolute;
+            top: 0.75rem;
+            right: 0.75rem;
+            display: flex;
+            gap: 0.5rem;
+        }
+        .adjustment-actions button {
+            background: rgba(255,255,255,0.1);
+            border: none;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+        .adjustment-actions button:hover {
+            background: rgba(255,255,255,0.2);
+        }
+        .scenario-summary {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        .summary-card {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 0.5rem;
+            padding: 1rem;
+            text-align: center;
+        }
+        .summary-card .label {
+            font-size: 0.75rem;
+            color: #9aa8b8;
+            text-transform: uppercase;
+            margin-bottom: 0.5rem;
+        }
+        .summary-card .value {
+            font-size: 1.25rem;
+            font-weight: bold;
+        }
+        .summary-card .value.positive { color: #7eb89a; }
+        .summary-card .value.negative { color: #e07a7a; }
+        .empty-state {
+            text-align: center;
+            color: #9aa8b8;
+            padding: 2rem;
+            font-style: italic;
+        }
+
+        /* Scenario Modal */
+        dialog {
+            background: #2a3542;
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 1rem;
+            padding: 0;
+            color: #e8eaed;
+            max-width: 500px;
+            width: 90%;
+        }
+        dialog::backdrop {
+            background: rgba(0,0,0,0.7);
+        }
+        .dialog-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .dialog-body {
+            padding: 1.5rem;
+        }
+        .dialog-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 0.75rem;
+            padding: 1rem 1.5rem;
+            border-top: 1px solid rgba(255,255,255,0.1);
+        }
+        .form-group {
+            margin-bottom: 1rem;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #9aa8b8;
+            font-size: 0.85rem;
+        }
+        .form-control {
+            width: 100%;
+            padding: 0.5rem;
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 0.5rem;
+            color: #eee;
+            font-size: 0.9rem;
+        }
+        .form-control:focus {
+            outline: none;
+            border-color: #5a9a7a;
+        }
+        .form-help {
+            font-size: 0.75rem;
+            color: #9aa8b8;
+            margin-top: 0.25rem;
+        }
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.7);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(255,255,255,0.2);
+            border-top-color: #5a9a7a;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .loading-overlay p {
+            margin-top: 1rem;
+            color: #e8eaed;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <img src="sarah.jpg" alt="" class="header-bg">
+        <h1>Blizzard</h1>
+        <span class="subtitle">Sales Forecaster</span>
+        <div id="backtest-badge" class="backtest-badge" style="display:none">BACKTEST MODE</div>
+        <div class="header-controls">
+            <label><input type="checkbox" id="cumulative-toggle"> Cumulative YTD</label>
+            <label><input type="checkbox" id="zoom-toggle"> Zoom (3yr)</label>
+            <label><input type="checkbox" id="backtest-toggle"> Backtest (-1yr)</label>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="tabs" id="tabs">
+            <div class="tab active" data-tab="overall">Overall</div>
+            <div class="tab" data-tab="products">Product Groups</div>
+            <div class="tab" data-tab="customers">Customers</div>
+            <div class="tab" data-tab="geography">Geography</div>
+            <div class="tab scenarios-tab" data-tab="scenarios">Scenarios</div>
+        </div>
+
+        <div id="content">
+            <div class="loading">Loading forecast data...</div>
+        </div>
+    </div>
+
+    <div class="tooltip" id="tooltip" style="display:none"></div>
+
+    <!-- New Scenario Dialog -->
+    <dialog id="new-scenario-dialog">
+        <div class="dialog-header">
+            <h3>New Scenario</h3>
+            <button class="modal-close" onclick="this.closest('dialog').close()">&times;</button>
+        </div>
+        <div class="dialog-body">
+            <div class="form-group">
+                <label for="scenario-name">Scenario Name</label>
+                <input type="text" id="scenario-name" class="form-control" placeholder="e.g., Conservative 2026">
+            </div>
+        </div>
+        <div class="dialog-footer">
+            <button class="btn btn-secondary" onclick="this.closest('dialog').close()">Cancel</button>
+            <button class="btn btn-primary" onclick="createNewScenario()">Create</button>
+        </div>
+    </dialog>
+
+    <!-- Add Adjustment Dialog -->
+    <dialog id="adjustment-dialog">
+        <div class="dialog-header">
+            <h3 id="adjustment-dialog-title">Add Adjustment</h3>
+            <button class="modal-close" onclick="this.closest('dialog').close()">&times;</button>
+        </div>
+        <div class="dialog-body">
+            <div class="form-group">
+                <label for="adj-type">Adjustment Type</label>
+                <select id="adj-type" class="form-control" onchange="updateAdjustmentFields()">
+                    <option value="scale">Scale Existing</option>
+                    <option value="remove">Remove Existing</option>
+                    <option value="new_business">New Business</option>
+                </select>
+            </div>
+
+            <div id="scale-remove-fields">
+                <div class="form-group">
+                    <label for="adj-target-type">Target Type</label>
+                    <select id="adj-target-type" class="form-control" onchange="populateTargets()">
+                        <option value="customer">Customer</option>
+                        <option value="product_group">Product Group</option>
+                        <option value="geography">Geography</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="adj-target">Target</label>
+                    <select id="adj-target" class="form-control" size="5">
+                    </select>
+                </div>
+                <div class="form-group" id="scale-factor-group">
+                    <label for="adj-factor">Scale Factor (%)</label>
+                    <input type="number" id="adj-factor" class="form-control" value="100" min="0" max="500">
+                    <div class="form-help">100 = no change, 0 = remove, 150 = +50%</div>
+                </div>
+            </div>
+
+            <div id="new-business-fields" style="display:none;">
+                <div class="form-group">
+                    <label for="nb-product">Product Group</label>
+                    <select id="nb-product" class="form-control">
+                        <option value="">Select...</option>
+                        <option value="S5">S5 - Chilled</option>
+                        <option value="S1">S1 - Frozen</option>
+                        <option value="S2">S2 - Ambient</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="nb-geo">Geography</label>
+                    <select id="nb-geo" class="form-control">
+                        <option value="">Select...</option>
+                        <option value="MEAEDU">Middle East > UAE > Dubai</option>
+                        <option value="MEAEAR">Middle East > UAE > Abu Dhabi</option>
+                        <option value="EUR">Europe</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="nb-start">Start Month</label>
+                    <input type="month" id="nb-start" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label for="nb-y1">Year 1 Value (GBP)</label>
+                    <input type="number" id="nb-y1" class="form-control" min="0" step="1000" placeholder="50000">
+                </div>
+                <div class="form-group">
+                    <label for="nb-y2">Year 2 Value (GBP)</label>
+                    <input type="number" id="nb-y2" class="form-control" min="0" step="1000" placeholder="100000">
+                </div>
+                <div class="form-group">
+                    <label for="nb-y3">Year 3 Value (GBP)</label>
+                    <input type="number" id="nb-y3" class="form-control" min="0" step="1000" placeholder="150000">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="adj-note">Note (optional)</label>
+                <input type="text" id="adj-note" class="form-control" placeholder="Why this adjustment?">
+            </div>
+        </div>
+        <div class="dialog-footer">
+            <button class="btn btn-secondary" onclick="this.closest('dialog').close()">Cancel</button>
+            <button class="btn btn-primary" onclick="saveAdjustment()">Save</button>
+        </div>
+    </dialog>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="loading-overlay" style="display:none;">
+        <div class="loading-spinner"></div>
+        <p id="loading-message">Loading...</p>
+    </div>
+
+    <script type="module">
+        // Import WASM module
+        import wasmInit, { forecast as wasmForecast } from './blizzard_wasm.js';
+
+        // Global state
+        let data = null;
+        let currentTab = 'overall';
+        let currentSelection = null;
+        let zoomEnabled = false;
+        let cumulativeEnabled = false;
+
+        // Scenario state
+        let wasmInitialized = false;
+        let scenarios = [];
+        let currentScenarioId = null;
+        let baselineForecastResult = null;
+
+        // Make functions global for onclick handlers
+        window.createNewScenario = createNewScenario;
+        window.selectScenario = selectScenario;
+        window.deleteScenario = deleteScenario;
+        window.showAdjustmentDialog = showAdjustmentDialog;
+        window.deleteAdjustment = deleteAdjustment;
+        window.saveAdjustment = saveAdjustment;
+        window.updateAdjustmentFields = updateAdjustmentFields;
+        window.populateTargets = populateTargets;
+
+        async function loadData() {
+            try {
+                const params = new URLSearchParams(window.location.search);
+                const cutoff = params.get('cutoff');
+                const cgiUrl = cutoff ? `/cgi-bin/blizzard?cutoff=${cutoff}` : '/cgi-bin/blizzard';
+
+                let response;
+                try {
+                    response = await fetch(cgiUrl);
+                } catch {
+                    response = await fetch('forecast_results.json');
+                }
+
+                if (!response.ok) {
+                    // Generate sample data
+                    data = generateSampleData();
+                } else {
+                    data = await response.json();
+                }
+
+                if (data.backtestMode) {
+                    document.getElementById('backtest-badge').style.display = 'block';
+                    document.getElementById('backtest-badge').textContent =
+                        `BACKTEST: Cutoff ${data.cutoffDate}`;
+                }
+
+                renderTab('overall');
+            } catch (e) {
+                console.warn('Using sample data:', e.message);
+                data = generateSampleData();
+                renderTab('overall');
+            }
+        }
+
+        function generateSampleData() {
+            const historicalRows = [];
+            const forecastRows = [];
+            const startYear = 2020;
+
+            // Generate 5 years of historical data
+            for (let y = 0; y < 5; y++) {
+                for (let m = 1; m <= 12; m++) {
+                    const year = startYear + y;
+                    const month = String(m).padStart(2, '0');
+                    const trend = 1000 + (y * 12 + m) * 15;
+                    const seasonal = Math.sin((m / 12) * 2 * Math.PI) * 200;
+                    const noise = (Math.random() - 0.5) * 100;
+                    historicalRows.push([`${year}-${month}`, trend + seasonal + noise]);
+                }
+            }
+
+            // Generate 12 months forecast
+            const lastYear = startYear + 5;
+            for (let m = 1; m <= 12; m++) {
+                const month = String(m).padStart(2, '0');
+                const trend = 1000 + (60 + m) * 15;
+                const seasonal = Math.sin((m / 12) * 2 * Math.PI) * 200;
+                const value = trend + seasonal;
+                const lower = value * 0.85;
+                const upper = value * 1.15;
+                forecastRows.push([`${lastYear}-${month}`, value, lower, upper]);
+            }
+
+            return {
+                overall: {
+                    historical: { rows: historicalRows },
+                    forecast: { rows: forecastRows }
+                },
+                customers: {
+                    'ACME Corp': { historical: { rows: historicalRows.map(r => [r[0], r[1] * 0.3]) }, forecast: { rows: forecastRows.map(r => [r[0], r[1] * 0.3, r[2] * 0.3, r[3] * 0.3]) } },
+                    'BigCo Industries': { historical: { rows: historicalRows.map(r => [r[0], r[1] * 0.25]) }, forecast: { rows: forecastRows.map(r => [r[0], r[1] * 0.25, r[2] * 0.25, r[3] * 0.25]) } },
+                    'MegaRetail': { historical: { rows: historicalRows.map(r => [r[0], r[1] * 0.2]) }, forecast: { rows: forecastRows.map(r => [r[0], r[1] * 0.2, r[2] * 0.2, r[3] * 0.2]) } },
+                    'SuperStore': { historical: { rows: historicalRows.map(r => [r[0], r[1] * 0.15]) }, forecast: { rows: forecastRows.map(r => [r[0], r[1] * 0.15, r[2] * 0.15, r[3] * 0.15]) } },
+                    'Value Mart': { historical: { rows: historicalRows.map(r => [r[0], r[1] * 0.1]) }, forecast: { rows: forecastRows.map(r => [r[0], r[1] * 0.1, r[2] * 0.1, r[3] * 0.1]) } }
+                },
+                productGroups: {},
+                geography: { hierarchy: [], forecasts: {} }
+            };
+        }
+
+        function renderTab(tab) {
+            currentTab = tab;
+            document.querySelectorAll('.tab').forEach(t =>
+                t.classList.toggle('active', t.dataset.tab === tab));
+
+            const content = document.getElementById('content');
+
+            if (tab === 'scenarios') {
+                renderScenariosTab(content);
+            } else if (tab === 'overall') {
+                renderOverallTab(content);
+            } else if (tab === 'customers') {
+                renderCustomersTab(content);
+            } else if (tab === 'products') {
+                content.innerHTML = '<div class="chart-container"><div class="empty-state">Product Groups view - Select a product from the hierarchy</div></div>';
+            } else if (tab === 'geography') {
+                content.innerHTML = '<div class="chart-container"><div class="empty-state">Geography view - Select a region from the hierarchy</div></div>';
+            }
+        }
+
+        function renderOverallTab(content) {
+            const standardLegend = `
+                <div class="legend">
+                    <div class="legend-item"><div class="legend-color historical"></div>Historical</div>
+                    <div class="legend-item"><div class="legend-color forecast"></div>Forecast</div>
+                    ${data.backtestMode ? '<div class="legend-item"><div class="legend-color actual"></div>Actual</div>' : ''}
+                    <div class="legend-item" title="80% probability range"><div class="legend-color confidence"></div>80% Confidence</div>
+                </div>`;
+            content.innerHTML = `
+                <div class="chart-container">
+                    <div class="chart-title">Overall Sales Forecast${cumulativeEnabled ? ' (Cumulative YTD)' : ''}</div>
+                    <div id="overall-chart"></div>
+                    ${standardLegend}
+                    <div class="metrics-grid" id="overall-metrics"></div>
+                    <div id="overall-year-table"></div>
+                </div>
+            `;
+            renderChart('overall-chart', data.overall);
+            renderYearTable('overall-year-table', data.overall);
+        }
+
+        function renderCustomersTab(content) {
+            const items = data.customers || {};
+            const keys = Object.keys(items);
+
+            if (keys.length === 0) {
+                content.innerHTML = '<div class="chart-container"><div class="empty-state">No customer data available</div></div>';
+                return;
+            }
+
+            content.innerHTML = `
+                <div class="selector-row">
+                    <div class="selector">
+                        <label>Select Customer</label>
+                        <div class="autocomplete-wrapper">
+                            <input type="text" id="item-search" placeholder="Type customer name..." autocomplete="off">
+                            <div class="autocomplete-list" id="autocomplete-list"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <div class="chart-title" id="chart-title">${keys[0]} Forecast</div>
+                    <div id="detail-chart"></div>
+                    <div class="legend">
+                        <div class="legend-item"><div class="legend-color historical"></div>Historical</div>
+                        <div class="legend-item"><div class="legend-color forecast"></div>Forecast</div>
+                        <div class="legend-item"><div class="legend-color confidence"></div>80% Confidence</div>
+                    </div>
+                </div>
+            `;
+
+            const searchInput = document.getElementById('item-search');
+            const listEl = document.getElementById('autocomplete-list');
+            let activeIdx = -1;
+
+            const showResults = (query) => {
+                const q = query.toLowerCase();
+                const matches = q ? keys.filter(k => k.toLowerCase().includes(q)).slice(0, 20) : keys.slice(0, 20);
+                activeIdx = -1;
+                listEl.innerHTML = matches.map(k => `<div class="autocomplete-item" data-key="${k}">${k}</div>`).join('');
+                listEl.classList.toggle('show', matches.length > 0);
+            };
+
+            const selectItem = (key) => {
+                searchInput.value = key;
+                listEl.classList.remove('show');
+                document.getElementById('chart-title').textContent = `${key} Forecast`;
+                renderChart('detail-chart', items[key]);
+            };
+
+            searchInput.addEventListener('input', () => showResults(searchInput.value));
+            searchInput.addEventListener('focus', () => showResults(searchInput.value));
+            listEl.addEventListener('click', (e) => {
+                const item = e.target.closest('.autocomplete-item');
+                if (item) selectItem(item.dataset.key);
+            });
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('.autocomplete-wrapper')) listEl.classList.remove('show');
+            });
+
+            searchInput.value = keys[0];
+            renderChart('detail-chart', items[keys[0]]);
+        }
+
+        async function renderScenariosTab(content) {
+            // Initialize WASM if not done
+            if (!wasmInitialized) {
+                showLoading('Initializing WASM module...');
+                try {
+                    await wasmInit();
+                    wasmInitialized = true;
+                    console.log('WASM initialized');
+                } catch (e) {
+                    console.error('WASM init failed:', e);
+                }
+                hideLoading();
+            }
+
+            // Load scenarios from localStorage
+            loadScenarios();
+
+            content.innerHTML = `
+                <div class="scenario-content">
+                    <div class="scenario-sidebar">
+                        <div class="scenario-list-container">
+                            <div class="scenario-list-header">
+                                <h3>Scenarios</h3>
+                                <button class="btn btn-primary" onclick="document.getElementById('new-scenario-dialog').showModal()">+ New</button>
+                            </div>
+                            <div id="scenario-list"></div>
+                        </div>
+                    </div>
+                    <div class="scenario-main">
+                        <div class="chart-container">
+                            <div class="chart-title" id="scenario-chart-title">Baseline Forecast</div>
+                            <div id="scenario-chart"></div>
+                            <div class="legend">
+                                <div class="legend-item"><div class="legend-color historical"></div>Historical</div>
+                                <div class="legend-item"><div class="legend-color forecast"></div>Baseline Forecast</div>
+                                <div class="legend-item"><div class="legend-color scenario"></div>Scenario Forecast</div>
+                                <div class="legend-item"><div class="legend-color confidence"></div>80% Confidence</div>
+                            </div>
+                        </div>
+                        <div class="chart-container">
+                            <div class="chart-title">Adjustments</div>
+                            <div id="adjustment-list"></div>
+                            <button id="add-adjustment-btn" class="btn btn-secondary" style="margin-top:1rem; display:none;" onclick="showAdjustmentDialog()">+ Add Adjustment</button>
+                        </div>
+                        <div class="scenario-summary" id="scenario-summary">
+                            <div class="summary-card">
+                                <div class="label">Baseline Total</div>
+                                <div class="value" id="baseline-total">-</div>
+                            </div>
+                            <div class="summary-card">
+                                <div class="label">Scenario Total</div>
+                                <div class="value" id="scenario-total">-</div>
+                            </div>
+                            <div class="summary-card">
+                                <div class="label">Delta</div>
+                                <div class="value" id="delta-total">-</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            renderScenarioList();
+            await selectScenario(null); // Start with baseline
+        }
+
+        function loadScenarios() {
+            try {
+                scenarios = JSON.parse(localStorage.getItem('blizzard_scenarios') || '[]');
+            } catch (e) {
+                scenarios = [];
+            }
+        }
+
+        function saveScenarios() {
+            localStorage.setItem('blizzard_scenarios', JSON.stringify(scenarios));
+        }
+
+        function renderScenarioList() {
+            const container = document.getElementById('scenario-list');
+            if (!container) return;
+
+            let html = `<div class="scenario-item baseline ${currentScenarioId === null ? 'active' : ''}" onclick="selectScenario(null)">Baseline (no adjustments)</div>`;
+
+            for (const s of scenarios) {
+                html += `<div class="scenario-item ${currentScenarioId === s.id ? 'active' : ''}" onclick="selectScenario('${s.id}')">${s.name}</div>`;
+            }
+
+            container.innerHTML = html;
+        }
+
+        async function selectScenario(scenarioId) {
+            currentScenarioId = scenarioId;
+            renderScenarioList();
+
+            const titleEl = document.getElementById('scenario-chart-title');
+            const addBtn = document.getElementById('add-adjustment-btn');
+            const adjList = document.getElementById('adjustment-list');
+
+            if (scenarioId === null) {
+                if (titleEl) titleEl.textContent = 'Baseline Forecast';
+                if (addBtn) addBtn.style.display = 'none';
+                if (adjList) adjList.innerHTML = '<div class="empty-state">Select a scenario to see adjustments</div>';
+            } else {
+                const scenario = scenarios.find(s => s.id === scenarioId);
+                if (scenario) {
+                    if (titleEl) titleEl.textContent = scenario.name + ' Forecast';
+                    if (addBtn) addBtn.style.display = 'inline-block';
+                    renderAdjustmentList(scenario.adjustments);
+                }
+            }
+
+            await recalculateScenario();
+        }
+
+        function renderAdjustmentList(adjustments) {
+            const container = document.getElementById('adjustment-list');
+            if (!container) return;
+
+            if (!adjustments || adjustments.length === 0) {
+                container.innerHTML = '<div class="empty-state">No adjustments. Click "+ Add Adjustment" to create one.</div>';
+                return;
+            }
+
+            let html = '';
+            for (const adj of adjustments) {
+                let summary = '';
+                if (adj.type === 'scale') {
+                    summary = `<strong>Scale:</strong> ${adj.target_key} to ${(adj.factor * 100).toFixed(0)}%`;
+                } else if (adj.type === 'remove') {
+                    summary = `<strong>Remove:</strong> ${adj.target_key}`;
+                } else if (adj.type === 'new_business') {
+                    summary = `<strong>New Business:</strong> ${adj.product_group} in ${adj.geography}<br>Y1: GBP ${(adj.year1_value/1000).toFixed(0)}k`;
+                }
+
+                html += `
+                    <div class="adjustment-item">
+                        ${summary}
+                        ${adj.note ? `<br><em>${adj.note}</em>` : ''}
+                        <div class="adjustment-actions">
+                            <button onclick="deleteAdjustment('${adj.id}')">Delete</button>
+                        </div>
+                    </div>
+                `;
+            }
+
+            container.innerHTML = html;
+        }
+
+        async function recalculateScenario() {
+            if (!data || !data.overall) return;
+
+            // Calculate baseline forecast
+            let baselineSeries = data.overall.historical.rows.map(r => r[1]);
+            const baselineResult = runForecast(baselineSeries);
+            baselineForecastResult = baselineResult;
+
+            // Calculate scenario forecast
+            let scenarioResult = baselineResult;
+            if (currentScenarioId !== null) {
+                const scenario = scenarios.find(s => s.id === currentScenarioId);
+                if (scenario && scenario.adjustments.length > 0) {
+                    let adjustedSeries = [...baselineSeries];
+                    for (const adj of scenario.adjustments) {
+                        adjustedSeries = applyAdjustmentToSeries(adjustedSeries, adj);
+                    }
+                    scenarioResult = runForecast(adjustedSeries);
+                }
+            }
+
+            // Update chart with comparison
+            renderScenarioChart(baselineResult, scenarioResult);
+
+            // Update summary
+            updateSummary(baselineResult, scenarioResult);
+        }
+
+        function runForecast(series) {
+            if (!wasmInitialized || series.length < 24) {
+                // Fallback: simple moving average
+                const avg = series.slice(-12).reduce((a, b) => a + b, 0) / 12;
+                return {
+                    forecast: Array(12).fill(avg),
+                    lower: Array(12).fill(avg * 0.85),
+                    upper: Array(12).fill(avg * 1.15)
+                };
+            }
+
+            try {
+                const input = {
+                    series: series,
+                    start_year: 2020,
+                    start_month: 1,
+                    forecast_months: 12,
+                    use_easter: true
+                };
+                const resultJson = wasmForecast(JSON.stringify(input));
+                return JSON.parse(resultJson);
+            } catch (e) {
+                console.error('WASM forecast error:', e);
+                const avg = series.slice(-12).reduce((a, b) => a + b, 0) / 12;
+                return {
+                    forecast: Array(12).fill(avg),
+                    lower: Array(12).fill(avg * 0.85),
+                    upper: Array(12).fill(avg * 1.15)
+                };
+            }
+        }
+
+        function applyAdjustmentToSeries(series, adj) {
+            const result = [...series];
+            if (adj.type === 'scale' || adj.type === 'remove') {
+                const factor = adj.type === 'remove' ? 0 : adj.factor;
+                const contribution = 0.1; // Assumed 10% contribution
+                const overallFactor = 1 + (factor - 1) * contribution;
+                return result.map(v => v * overallFactor);
+            } else if (adj.type === 'new_business') {
+                // Add new business values to last 12 months
+                const monthlyValue = adj.year1_value / 12;
+                for (let i = Math.max(0, result.length - 12); i < result.length; i++) {
+                    const rampFactor = 0.5 + 0.5 * ((i - (result.length - 12)) / 12);
+                    result[i] += monthlyValue * rampFactor;
+                }
+            }
+            return result;
+        }
+
+        function renderScenarioChart(baseline, scenario) {
+            const container = document.getElementById('scenario-chart');
+            if (!container) return;
+            container.innerHTML = '';
+
+            const margin = {top: 20, right: 30, bottom: 50, left: 80};
+            const width = container.clientWidth - margin.left - margin.right;
+            const height = 400 - margin.top - margin.bottom;
+
+            const svg = d3.select('#scenario-chart')
+                .append('svg')
+                .attr('width', width + margin.left + margin.right)
+                .attr('height', height + margin.top + margin.bottom)
+                .append('g')
+                .attr('transform', `translate(${margin.left},${margin.top})`);
+
+            // Combine historical and forecast data
+            const historical = data.overall.historical.rows.map((r, i) => ({
+                index: i,
+                value: r[1],
+                type: 'historical'
+            }));
+
+            const baselineFc = baseline.forecast.map((v, i) => ({
+                index: historical.length + i,
+                value: v,
+                type: 'baseline'
+            }));
+
+            const scenarioFc = scenario.forecast.map((v, i) => ({
+                index: historical.length + i,
+                value: v,
+                type: 'scenario'
+            }));
+
+            const confidence = baseline.forecast.map((v, i) => ({
+                index: historical.length + i,
+                lower: baseline.lower ? baseline.lower[i] : v * 0.85,
+                upper: baseline.upper ? baseline.upper[i] : v * 1.15
+            }));
+
+            const allData = [...historical, ...baselineFc, ...scenarioFc];
+            const allValues = [...allData.map(d => d.value), ...confidence.map(d => d.upper)];
+
+            const x = d3.scaleLinear()
+                .domain([0, historical.length + 12])
+                .range([0, width]);
+
+            const y = d3.scaleLinear()
+                .domain([0, d3.max(allValues) * 1.1])
+                .nice()
+                .range([height, 0]);
+
+            // Grid
+            svg.append('g')
+                .attr('class', 'grid')
+                .call(d3.axisLeft(y).tickSize(-width).tickFormat(''));
+
+            // Confidence area
+            const area = d3.area()
+                .x(d => x(d.index))
+                .y0(d => y(d.lower))
+                .y1(d => y(d.upper));
+
+            svg.append('path')
+                .datum(confidence)
+                .attr('fill', 'rgba(196, 163, 90, 0.2)')
+                .attr('d', area);
+
+            // Lines
+            const line = d3.line()
+                .x(d => x(d.index))
+                .y(d => y(d.value));
+
+            // Historical
+            svg.append('path')
+                .datum(historical)
+                .attr('fill', 'none')
+                .attr('stroke', '#8fb3d4')
+                .attr('stroke-width', 2)
+                .attr('d', line);
+
+            // Baseline forecast
+            const baselineWithLast = [historical[historical.length - 1], ...baselineFc];
+            svg.append('path')
+                .datum(baselineWithLast)
+                .attr('fill', 'none')
+                .attr('stroke', '#c4a35a')
+                .attr('stroke-width', 2)
+                .attr('stroke-dasharray', '5,5')
+                .attr('d', line);
+
+            // Scenario forecast
+            if (currentScenarioId !== null) {
+                const scenarioWithLast = [historical[historical.length - 1], ...scenarioFc];
+                svg.append('path')
+                    .datum(scenarioWithLast)
+                    .attr('fill', 'none')
+                    .attr('stroke', '#e07a7a')
+                    .attr('stroke-width', 2)
+                    .attr('d', line);
+            }
+
+            // Axes
+            svg.append('g')
+                .attr('class', 'axis')
+                .attr('transform', `translate(0,${height})`)
+                .call(d3.axisBottom(x).tickFormat(d => `M${d % 12 + 1}`));
+
+            svg.append('g')
+                .attr('class', 'axis')
+                .call(d3.axisLeft(y).tickFormat(d => d3.format(',.0f')(d)));
+        }
+
+        function updateSummary(baseline, scenario) {
+            const baselineTotal = baseline.forecast.reduce((a, b) => a + b, 0);
+            const scenarioTotal = scenario.forecast.reduce((a, b) => a + b, 0);
+            const delta = scenarioTotal - baselineTotal;
+            const deltaPercent = (delta / baselineTotal * 100);
+
+            const baselineEl = document.getElementById('baseline-total');
+            const scenarioEl = document.getElementById('scenario-total');
+            const deltaEl = document.getElementById('delta-total');
+
+            if (baselineEl) baselineEl.textContent = `GBP ${(baselineTotal / 1000).toFixed(0)}k`;
+            if (scenarioEl) scenarioEl.textContent = `GBP ${(scenarioTotal / 1000).toFixed(0)}k`;
+            if (deltaEl) {
+                deltaEl.textContent = `${delta >= 0 ? '+' : ''}GBP ${(delta / 1000).toFixed(0)}k (${deltaPercent >= 0 ? '+' : ''}${deltaPercent.toFixed(1)}%)`;
+                deltaEl.className = 'value ' + (delta >= 0 ? 'positive' : 'negative');
+            }
+        }
+
+        function createNewScenario() {
+            const name = document.getElementById('scenario-name').value.trim();
+            if (!name) {
+                alert('Please enter a scenario name');
+                return;
+            }
+
+            const scenario = {
+                id: crypto.randomUUID(),
+                name: name,
+                created: new Date().toISOString(),
+                adjustments: []
+            };
+
+            scenarios.push(scenario);
+            saveScenarios();
+
+            document.getElementById('new-scenario-dialog').close();
+            document.getElementById('scenario-name').value = '';
+
+            renderScenarioList();
+            selectScenario(scenario.id);
+        }
+
+        function deleteScenario(scenarioId) {
+            if (!confirm('Delete this scenario?')) return;
+            scenarios = scenarios.filter(s => s.id !== scenarioId);
+            saveScenarios();
+            renderScenarioList();
+            selectScenario(null);
+        }
+
+        function showAdjustmentDialog() {
+            document.getElementById('adj-type').value = 'scale';
+            updateAdjustmentFields();
+            populateTargets();
+            document.getElementById('adjustment-dialog').showModal();
+        }
+
+        function updateAdjustmentFields() {
+            const type = document.getElementById('adj-type').value;
+            const scaleFields = document.getElementById('scale-remove-fields');
+            const nbFields = document.getElementById('new-business-fields');
+            const factorGroup = document.getElementById('scale-factor-group');
+
+            if (type === 'new_business') {
+                scaleFields.style.display = 'none';
+                nbFields.style.display = 'block';
+            } else {
+                scaleFields.style.display = 'block';
+                nbFields.style.display = 'none';
+                factorGroup.style.display = type === 'scale' ? 'block' : 'none';
+            }
+        }
+
+        function populateTargets() {
+            const targetType = document.getElementById('adj-target-type').value;
+            const select = document.getElementById('adj-target');
+            select.innerHTML = '';
+
+            let items = [];
+            if (targetType === 'customer' && data.customers) {
+                items = Object.keys(data.customers);
+            } else if (targetType === 'product_group') {
+                items = ['S5 - Chilled', 'S1 - Frozen', 'S2 - Ambient'];
+            } else if (targetType === 'geography') {
+                items = ['Europe', 'Middle East', 'Asia Pacific'];
+            }
+
+            for (const item of items) {
+                const opt = document.createElement('option');
+                opt.value = item;
+                opt.textContent = item;
+                select.appendChild(opt);
+            }
+        }
+
+        function saveAdjustment() {
+            const type = document.getElementById('adj-type').value;
+            const note = document.getElementById('adj-note').value;
+
+            let adjustment = {
+                id: crypto.randomUUID(),
+                type: type,
+                note: note
+            };
+
+            if (type === 'scale' || type === 'remove') {
+                adjustment.target_type = document.getElementById('adj-target-type').value;
+                adjustment.target_key = document.getElementById('adj-target').value;
+                adjustment.factor = type === 'remove' ? 0 : parseFloat(document.getElementById('adj-factor').value) / 100;
+
+                if (!adjustment.target_key) {
+                    alert('Please select a target');
+                    return;
+                }
+            } else if (type === 'new_business') {
+                adjustment.product_group = document.getElementById('nb-product').value;
+                adjustment.geography = document.getElementById('nb-geo').value;
+                adjustment.start_month = document.getElementById('nb-start').value;
+                adjustment.year1_value = parseFloat(document.getElementById('nb-y1').value) || 0;
+                adjustment.year2_value = parseFloat(document.getElementById('nb-y2').value) || 0;
+                adjustment.year3_value = parseFloat(document.getElementById('nb-y3').value) || 0;
+
+                if (!adjustment.product_group || !adjustment.geography || !adjustment.year1_value) {
+                    alert('Please fill in all required fields');
+                    return;
+                }
+            }
+
+            const scenario = scenarios.find(s => s.id === currentScenarioId);
+            if (scenario) {
+                scenario.adjustments.push(adjustment);
+                saveScenarios();
+                renderAdjustmentList(scenario.adjustments);
+                recalculateScenario();
+            }
+
+            document.getElementById('adjustment-dialog').close();
+        }
+
+        function deleteAdjustment(adjustmentId) {
+            if (!confirm('Delete this adjustment?')) return;
+
+            const scenario = scenarios.find(s => s.id === currentScenarioId);
+            if (scenario) {
+                scenario.adjustments = scenario.adjustments.filter(a => a.id !== adjustmentId);
+                saveScenarios();
+                renderAdjustmentList(scenario.adjustments);
+                recalculateScenario();
+            }
+        }
+
+        function renderChart(containerId, forecastData) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            container.innerHTML = '';
+
+            const margin = {top: 20, right: 30, bottom: 50, left: 80};
+            const width = container.clientWidth - margin.left - margin.right;
+            const height = 400 - margin.top - margin.bottom;
+
+            const svg = d3.select(`#${containerId}`)
+                .append('svg')
+                .attr('width', width + margin.left + margin.right)
+                .attr('height', height + margin.top + margin.bottom)
+                .append('g')
+                .attr('transform', `translate(${margin.left},${margin.top})`);
+
+            const parseMonth = d3.timeParse('%Y-%m');
+
+            let historical = forecastData.historical.rows.map(r => ({
+                date: parseMonth(r[0]),
+                value: r[1],
+                type: 'historical'
+            }));
+
+            const forecast = forecastData.forecast.rows.map(r => ({
+                date: parseMonth(r[0]),
+                value: r[1],
+                type: 'forecast'
+            }));
+
+            let confidence = forecastData.forecast.rows.map(r => ({
+                date: parseMonth(r[0]),
+                lower: r[2] || r[1] * 0.85,
+                upper: r[3] || r[1] * 1.15
+            }));
+
+            if (zoomEnabled && historical.length > 0) {
+                const lastHistDate = historical[historical.length - 1].date;
+                const threeYearsAgo = new Date(lastHistDate);
+                threeYearsAgo.setFullYear(threeYearsAgo.getFullYear() - 3);
+                historical = historical.filter(d => d.date >= threeYearsAgo);
+            }
+
+            const allData = [...historical, ...forecast];
+            const allValues = [...allData.map(d => d.value), ...confidence.map(d => d.upper)];
+
+            const x = d3.scaleTime()
+                .domain(d3.extent(allData, d => d.date))
+                .range([0, width]);
+
+            const y = d3.scaleLinear()
+                .domain([0, d3.max(allValues) * 1.1])
+                .nice()
+                .range([height, 0]);
+
+            svg.append('g')
+                .attr('class', 'grid')
+                .call(d3.axisLeft(y).tickSize(-width).tickFormat(''));
+
+            const area = d3.area()
+                .x(d => x(d.date))
+                .y0(d => y(d.lower))
+                .y1(d => y(d.upper));
+
+            svg.append('path')
+                .datum(confidence)
+                .attr('fill', 'rgba(196, 163, 90, 0.2)')
+                .attr('d', area);
+
+            const line = d3.line()
+                .x(d => x(d.date))
+                .y(d => y(d.value));
+
+            svg.append('path')
+                .datum(historical)
+                .attr('fill', 'none')
+                .attr('stroke', '#8fb3d4')
+                .attr('stroke-width', 2)
+                .attr('d', line);
+
+            const forecastWithLast = [historical[historical.length - 1], ...forecast];
+            svg.append('path')
+                .datum(forecastWithLast)
+                .attr('fill', 'none')
+                .attr('stroke', '#c4a35a')
+                .attr('stroke-width', 2)
+                .attr('stroke-dasharray', '5,5')
+                .attr('d', line);
+
+            svg.append('g')
+                .attr('class', 'axis')
+                .attr('transform', `translate(0,${height})`)
+                .call(d3.axisBottom(x).tickFormat(d3.timeFormat('%b %Y')))
+                .selectAll('text')
+                .attr('transform', 'rotate(-45)')
+                .style('text-anchor', 'end');
+
+            svg.append('g')
+                .attr('class', 'axis')
+                .call(d3.axisLeft(y).tickFormat(d => d3.format(',.0f')(d)));
+        }
+
+        function renderYearTable(containerId, forecastData) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+
+            const yearData = {};
+            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+            forecastData.historical.rows.forEach(r => {
+                const year = r[0].substring(0, 4);
+                if (!yearData[year]) yearData[year] = { historical: 0, forecast: 0 };
+                yearData[year].historical += r[1];
+            });
+
+            forecastData.forecast.rows.forEach(r => {
+                const year = r[0].substring(0, 4);
+                if (!yearData[year]) yearData[year] = { historical: 0, forecast: 0 };
+                yearData[year].forecast += r[1];
+            });
+
+            const years = Object.keys(yearData).sort();
+            const formatK = v => v > 0 ? 'GBP ' + (v / 1000).toLocaleString('en-GB', { maximumFractionDigits: 0 }) + 'k' : '-';
+
+            let html = `<table class="year-table">
+                <thead><tr><th>Year</th><th>Historical</th><th>Forecast</th></tr></thead>
+                <tbody>`;
+
+            years.forEach(year => {
+                const yd = yearData[year];
+                const isForecast = yd.forecast > 0 && yd.historical === 0;
+                html += `<tr class="year-row ${isForecast ? 'forecast-row' : ''}" data-year="${year}">
+                    <td>${year}</td>
+                    <td>${formatK(yd.historical)}</td>
+                    <td>${formatK(yd.forecast)}</td>
+                </tr>`;
+            });
+
+            html += '</tbody></table>';
+            container.innerHTML = html;
+
+            container.querySelectorAll('.year-row').forEach(row => {
+                row.addEventListener('click', () => row.classList.toggle('expanded'));
+            });
+        }
+
+        function showLoading(msg) {
+            document.getElementById('loading-message').textContent = msg;
+            document.getElementById('loading-overlay').style.display = 'flex';
+        }
+
+        function hideLoading() {
+            document.getElementById('loading-overlay').style.display = 'none';
+        }
+
+        // Event listeners
+        document.getElementById('tabs').addEventListener('click', e => {
+            if (e.target.classList.contains('tab')) {
+                renderTab(e.target.dataset.tab);
+            }
+        });
+
+        document.getElementById('zoom-toggle').addEventListener('change', (e) => {
+            zoomEnabled = e.target.checked;
+            renderTab(currentTab);
+        });
+
+        document.getElementById('cumulative-toggle').addEventListener('change', (e) => {
+            cumulativeEnabled = e.target.checked;
+            renderTab(currentTab);
+        });
+
+        window.addEventListener('resize', () => {
+            clearTimeout(window.resizeTimeout);
+            window.resizeTimeout = setTimeout(() => renderTab(currentTab), 250);
+        });
+
+        // Initialize
+        loadData();
+    </script>
+</body>
+</html>
